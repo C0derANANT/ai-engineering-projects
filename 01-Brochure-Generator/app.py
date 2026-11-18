@@ -14,14 +14,15 @@ import argparse
 import logging
 
 import gradio as gr
-import requests
 
 from brochure import (
     BrochureError,
     BrochureRequest,
+    ScrapeError,
     export_docx,
     export_pdf,
     fetch_website_context,
+    make_basename,
     normalize_url,
     stream_brochure,
 )
@@ -40,6 +41,8 @@ def generate(company_name, website, audience, tone, fmt, length, progress=gr.Pro
     company_name = (company_name or "").strip()
     if not company_name:
         raise gr.Error("Please enter a company name.")
+    if get_llm_config() is None:  # Fail fast instead of scraping first
+        raise gr.Error("No API key found. Add GROQ_API_KEY (or GOOGLE_API_KEY) to your .env file and restart the app.")
 
     website_ctx = None
     if (website or "").strip():
@@ -49,9 +52,14 @@ def generate(company_name, website, audience, tone, fmt, length, progress=gr.Pro
         progress(0.1, desc="Reading website...")
         try:
             website_ctx = fetch_website_context(url)
-        except requests.RequestException as e:
-            logger.warning("Could not read %s: %s", url, e)
-            gr.Warning(f"Couldn't read {url}, so the brochure is based on the company name only.")
+        except ScrapeError as e:
+            gr.Warning(f"Couldn't read {url}: {e}. The brochure will be based on the company name only.")
+        else:
+            if website_ctx.is_thin:
+                gr.Warning(
+                    f"{url} returned almost no readable text (it probably loads its content with "
+                    "JavaScript), so the brochure will be mostly generic."
+                )
 
     request = BrochureRequest(
         company_name=company_name,
@@ -65,15 +73,16 @@ def generate(company_name, website, audience, tone, fmt, length, progress=gr.Pro
     progress(0.3, desc="Writing brochure...")
     markdown = ""
     try:
-        for markdown in stream_brochure(request):
+        for markdown in stream_brochure(request, on_warning=gr.Warning):
             yield markdown, None, None
     except BrochureError as e:
         raise gr.Error(str(e))
 
     progress(0.9, desc="Creating PDF and DOCX...")
     try:
-        pdf_path = export_pdf(markdown, company_name)
-        docx_path = export_docx(markdown, company_name)
+        basename = make_basename(company_name)
+        pdf_path = export_pdf(markdown, company_name, basename)
+        docx_path = export_docx(markdown, company_name, basename)
     except Exception as e:  # Show the preview even if exporting fails
         logger.exception("Export failed")
         gr.Warning(f"Brochure created, but exporting failed: {e}")
@@ -145,13 +154,15 @@ def build_ui() -> gr.Blocks:
 def main():
     parser = argparse.ArgumentParser(description="AI Company Brochure Generator")
     parser.add_argument("--port", type=int, default=None, help="Port to run on (default: auto)")
+    parser.add_argument("--no-share", action="store_true", help="Don't create a public share link")
+    parser.add_argument("--no-browser", action="store_true", help="Don't open a browser tab")
     args = parser.parse_args()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     build_ui().launch(
-        share=True,
+        share=not args.no_share,
         server_port=args.port,
-        inbrowser=True,
+        inbrowser=not args.no_browser,
         theme=gr.themes.Soft(),
         allowed_paths=[str(OUTPUT_DIR)],
     )

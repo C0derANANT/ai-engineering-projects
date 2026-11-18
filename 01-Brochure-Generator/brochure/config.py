@@ -4,13 +4,28 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-# Searches this folder and its parents for a .env file
-load_dotenv(override=True)
+from dotenv import dotenv_values, find_dotenv
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = PROJECT_DIR / "outputs"
+
+
+def _load_env() -> None:
+    """Load the nearest .env (searching upward from this folder).
+
+    Values in .env win over the shell, but blank lines such as `GOOGLE_API_KEY=`
+    (copied straight from .env.example) are skipped, so they can't wipe out a
+    key you already exported in your terminal.
+    """
+    path = find_dotenv()
+    if not path:
+        return
+    for key, value in dotenv_values(path).items():
+        if value and value.strip():
+            os.environ[key] = value.strip()
+
+
+_load_env()
 
 
 @dataclass(frozen=True)
@@ -19,22 +34,41 @@ class LLMConfig:
     base_url: str
     api_key: str
     model: str
+    key_env: str    # name of the env variable holding the key (for error messages)
+    model_env: str  # name of the env variable that overrides the model
 
 
-def get_llm_config() -> LLMConfig | None:
-    """Return Groq settings if a Groq key exists, else Gemini, else None."""
-    if os.getenv("GROQ_API_KEY"):
-        return LLMConfig(
+def _env(name: str, default: str = "") -> str:
+    return (os.getenv(name) or default).strip()
+
+
+def available_providers() -> dict[str, LLMConfig]:
+    """Every provider that has an API key set, in order of preference."""
+    providers: dict[str, LLMConfig] = {}
+    if _env("GROQ_API_KEY"):
+        providers["Groq"] = LLMConfig(
             provider="Groq",
-            base_url=os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
-            api_key=os.environ["GROQ_API_KEY"],
-            model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+            base_url=_env("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+            api_key=_env("GROQ_API_KEY"),
+            model=_env("GROQ_MODEL", "openai/gpt-oss-120b"),
+            key_env="GROQ_API_KEY",
+            model_env="GROQ_MODEL",
         )
-    if os.getenv("GOOGLE_API_KEY"):
-        return LLMConfig(
+    if _env("GOOGLE_API_KEY"):
+        providers["Gemini"] = LLMConfig(
             provider="Gemini",
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            api_key=os.environ["GOOGLE_API_KEY"],
-            model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
+            base_url=_env("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"),
+            api_key=_env("GOOGLE_API_KEY"),
+            model=_env("GEMINI_MODEL", "gemini-3.6-flash"),
+            key_env="GOOGLE_API_KEY",
+            model_env="GEMINI_MODEL",
         )
-    return None
+    return providers
+
+
+def get_llm_config(provider: str | None = None) -> LLMConfig | None:
+    """Settings for `provider`, or for the first available one (Groq, then Gemini)."""
+    providers = available_providers()
+    if provider:
+        return providers.get(provider)
+    return next(iter(providers.values()), None)
