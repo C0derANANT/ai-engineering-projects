@@ -29,7 +29,7 @@ from brochure import (
     stream_brochure,
 )
 from brochure.config import HOSTED, OUTPUT_DIR, get_llm_config, missing_key_message
-from brochure.exporters import DEFAULT_COLOR
+from brochure.exporters import DEFAULT_COLOR, find_placeholders
 from brochure.generator import DEFAULT_SECTIONS, FORMATS, LANGUAGES, LENGTHS, SECTIONS, TONES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -72,20 +72,42 @@ def _export(markdown: str, company_name: str, color: str) -> tuple[str, str]:
     return str(pdf_path), str(docx_path)
 
 
-def recolor(brochure, color):
-    """Re-export the last brochure in a new brand colour (no new LLM call)."""
-    if not brochure:
-        return gr.skip(), gr.skip()
+def _status(markdown: str, edited: bool = False):
+    """The note under the preview: unsaved edits and placeholders still to fill in."""
+    notes = []
+    if edited:
+        notes.append("✏️ You've edited the text. Press **Update PDF & DOCX** to put your changes in the downloads.")
+    if placeholders := find_placeholders(markdown):
+        listed = ", ".join(f"`{p}`" for p in placeholders)
+        notes.append(
+            f"**Fill in the blanks:** the website didn't give {listed}, so the AI left a placeholder "
+            "instead of making something up. Replace them in the **Edit** tab, or leave them: "
+            "lines that still have a placeholder are left out of the PDF and DOCX."
+        )
+    return gr.Markdown("\n\n".join(notes), visible=bool(notes))
+
+
+def on_edit(markdown):
+    """Live preview while the user types in the Edit tab."""
+    return markdown, _status(markdown, edited=True)
+
+
+def reexport(brochure, markdown, color):
+    """Export the brochure again, with the user's edits and the current brand colour
+    (no new AI call)."""
+    if not brochure or not (markdown or "").strip():
+        return gr.skip(), gr.skip(), gr.skip()
     try:
-        return _export(brochure["markdown"], brochure["company"], color)
+        pdf_path, docx_path = _export(markdown, brochure["company"], color)
     except Exception as e:
         logger.exception("Re-export failed")
-        raise gr.Error(f"Couldn't recolour the files: {e}")
+        raise gr.Error(f"Couldn't update the files: {e}")
+    return pdf_path, docx_path, _status(markdown)
 
 
 def generate(company_name, website, audience, tone, fmt, length, language, sections, color,
              progress=gr.Progress()):
-    """Gradio handler: yields (preview_markdown, pdf_file, docx_file, last_brochure)."""
+    """Gradio handler: yields (preview, pdf_file, docx_file, last_brochure, editor, note)."""
     company_name = (company_name or "").strip()
     if not company_name:
         raise gr.Error("Please enter a company name.")
@@ -124,22 +146,25 @@ def generate(company_name, website, audience, tone, fmt, length, language, secti
 
     progress(0.3, desc="Writing brochure...")
     markdown = ""
+    hidden_note = gr.Markdown(visible=False)
     try:
         for markdown in stream_brochure(request, on_warning=gr.Warning):
-            yield markdown, None, None, None
+            # The editor fills in once the brochure is finished
+            yield markdown, None, None, None, "", hidden_note
     except BrochureError as e:
         raise gr.Error(str(e))
 
+    brochure = {"company": company_name}
     progress(0.9, desc="Creating PDF and DOCX...")
     try:
         pdf_path, docx_path = _export(markdown, company_name, color)
     except Exception as e:  # Show the preview even if exporting fails
         logger.exception("Export failed")
         gr.Warning(f"Brochure created, but exporting failed: {e}")
-        yield markdown, None, None, None
+        yield markdown, None, None, brochure, markdown, _status(markdown)
         return
 
-    yield markdown, pdf_path, docx_path, {"markdown": markdown, "company": company_name}
+    yield markdown, pdf_path, docx_path, brochure, markdown, _status(markdown)
 
 
 def build_ui() -> gr.Blocks:
@@ -187,27 +212,42 @@ def build_ui() -> gr.Blocks:
                 generate_btn = gr.Button("Generate Brochure ✨", variant="primary")
 
             with gr.Column(scale=3):
-                preview = gr.Markdown(
-                    "*Your brochure preview will appear here.*",
-                    container=True,
-                    min_height=420,
-                )
+                with gr.Tabs():
+                    with gr.Tab("Preview"):
+                        preview = gr.Markdown(
+                            "*Your brochure preview will appear here.*",
+                            container=True,
+                            min_height=420,
+                        )
+                    with gr.Tab("Edit"):
+                        editor = gr.Textbox(
+                            label="Brochure text (Markdown: # headings, - bullets, **bold**)",
+                            placeholder="Generate a brochure first, then fix or fill in anything here.",
+                            lines=18, max_lines=40,
+                        )
+                        update_btn = gr.Button("Update PDF & DOCX", variant="secondary")
+                note = gr.Markdown(visible=False)
                 with gr.Row():
                     pdf_file = gr.File(label="Download PDF")
                     docx_file = gr.File(label="Download DOCX")
-                gr.Markdown("Changing the brand colour after generating re-colours the files instantly.")
+                gr.Markdown("Fix or fill in anything in the **Edit** tab before downloading. "
+                            "Changing the brand colour after generating re-colours the files instantly.")
 
         inputs = [company_name, website, audience, tone, fmt, length, language, sections, color]
         gr.Examples(examples=EXAMPLES, inputs=inputs, example_labels=EXAMPLE_LABELS,
                     label="Examples (click one, then Generate)")
 
         last_brochure = gr.State(None)
-        outputs = [preview, pdf_file, docx_file, last_brochure]
+        outputs = [preview, pdf_file, docx_file, last_brochure, editor, note]
         gr.on([generate_btn.click, company_name.submit], generate, inputs=inputs, outputs=outputs,
               trigger_mode="once")
-        # "change" (not "input") so typed hex codes and example clicks also recolour
-        color.change(recolor, inputs=[last_brochure, color], outputs=[pdf_file, docx_file],
-                     trigger_mode="always_last", show_progress="minimal")
+        editor.input(on_edit, inputs=editor, outputs=[preview, note], show_progress="hidden")
+        # The editor's text is what gets exported, so edits survive a colour change too.
+        # "change" (not "input") so typed hex codes and example clicks also recolour.
+        reexport_args = {"fn": reexport, "inputs": [last_brochure, editor, color],
+                         "outputs": [pdf_file, docx_file, note], "show_progress": "minimal"}
+        update_btn.click(**reexport_args)
+        color.change(trigger_mode="always_last", **reexport_args)
 
     return demo
 

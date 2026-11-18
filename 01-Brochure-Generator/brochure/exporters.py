@@ -270,6 +270,91 @@ def plain_text(text: str) -> str:
 
 
 # --------------------------------------------------------------------------
+# Placeholders
+# --------------------------------------------------------------------------
+# The AI writes [Phone], [Email], [Address] (or translated ones like [Teléfono]) for
+# details the website didn't give, instead of inventing them. They show in the editable
+# preview so the user can fill them in; whatever is left is kept out of the PDF and DOCX.
+_PLACEHOLDER = re.compile(r"\[[^\[\]()]{1,40}\](?!\()")  # [Phone], but not a [link](url)
+_PART_SEPARATOR = re.compile(r"(\s+(?:\||–|—|-|·|•|/)\s+)")  # "Email: a@b.com | Phone: [Phone]"
+_SENTENCE_END = re.compile(r"(?<=[.!?।。！？])\s+")
+_LABEL = re.compile(r"^[^:\[\]]{1,30}:")  # "Phone:" / "फ़ोन:" at the start of a part
+_LINE_PREFIX = re.compile(r"^\s*(?:>\s*)*(?:[-*+•]\s+|\d+[.)]\s+)?")  # "> ", "- ", "2. "
+
+
+def find_placeholders(markdown: str) -> list[str]:
+    """Placeholders still in the brochure, in order, without repeats: ['[Phone]', ...]."""
+    found = _PLACEHOLDER.findall(markdown or "")
+    return list(dict.fromkeys(found))
+
+
+def _only_placeholders(text: str) -> bool:
+    """True for text like "[Phone]", "**Phone:** [Phone]" or "[Phone] – [Address]"."""
+    rest = re.sub(r"[*_`]", "", _PLACEHOLDER.sub("", text)).strip()
+    rest = _LABEL.sub("", rest)
+    return not re.search(r"\w", rest)
+
+
+def _strip_placeholders(text: str) -> str:
+    """One line without its unfilled placeholders; '' if nothing real is left.
+
+    "Email: a@b.com | Phone: [Phone]" keeps the email part, and in running text
+    only the sentence with the placeholder goes ("Visit us at [Address].").
+    """
+    pieces = _PART_SEPARATOR.split(text)  # [part, separator, part, separator, part]
+    kept = ""
+    for i in range(0, len(pieces), 2):
+        part = pieces[i]
+        if _PLACEHOLDER.search(part) and not _only_placeholders(part):
+            part = " ".join(s for s in _SENTENCE_END.split(part) if not _PLACEHOLDER.search(s))
+        if not part.strip() or _only_placeholders(part):
+            continue
+        kept += (pieces[i - 1] if kept else "") + part
+    return kept.strip()
+
+
+def _heading_level(line: str | None) -> int:
+    m = _HEADING.match(line.strip()) if line else None
+    return len(m.group(1)) if m else 0
+
+
+def remove_placeholders(markdown: str) -> str:
+    """The brochure without unfilled placeholders, ready to export.
+
+    Works line by line (before lines are joined into paragraphs), so a real
+    email on one line is never lost because the next line says [Phone]. A
+    heading left with nothing under it, like "Get in Touch", is dropped too.
+    """
+    lines: list[str | None] = []  # None = a line that held only placeholders
+    for line in (markdown or "").splitlines():
+        if not _PLACEHOLDER.search(line) or _heading_level(line):
+            lines.append(line)
+            continue
+        prefix = _LINE_PREFIX.match(line).group(0)  # keep the bullet or number
+        text = _strip_placeholders(line[len(prefix):])
+        lines.append(prefix + text if text else None)
+
+    result: list[str] = []
+    seen_title = False
+    for i, line in enumerate(lines):
+        if line is None:
+            continue
+        level = _heading_level(line)
+        if level and seen_title:
+            section = []
+            for later in lines[i + 1:]:
+                if 0 < _heading_level(later) <= level:
+                    break
+                if later is None or (later.strip() and not _RULE.match(later)):
+                    section.append(later)
+            if section and all(later is None for later in section):
+                continue  # every line under this heading was a placeholder
+        seen_title = seen_title or bool(level)
+        result.append(line)
+    return "\n".join(result)
+
+
+# --------------------------------------------------------------------------
 # File names
 # --------------------------------------------------------------------------
 def make_basename(company_name: str) -> str:
@@ -450,7 +535,7 @@ def export_pdf(markdown: str, company_name: str, basename: str | None = None,
     pdf.add_page()
     first_heading = True
 
-    for block in parse_markdown(markdown):
+    for block in parse_markdown(remove_placeholders(markdown)):
         if block.kind == "heading" and (block.level == 1 or first_heading):
             # Title banner
             pdf.set_fill_color(*colors.primary)
@@ -548,7 +633,7 @@ def export_docx(markdown: str, company_name: str, basename: str | None = None,
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     first_heading = True
-    for block in parse_markdown(markdown):
+    for block in parse_markdown(remove_placeholders(markdown)):
         runs = parse_inline(block.text)
         if block.kind == "heading":
             if block.level == 1 or first_heading:

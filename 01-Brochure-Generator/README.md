@@ -28,7 +28,8 @@ Built as part of the Incapp AI Engineer course.
 - **Customisable style:** tone (Professional, Friendly, Witty, Luxury), format (bullets / paragraphs / mixed), length and target audience
 - **One-click examples:** five ready-made setups (e.g. Chai Point in Hindi, Stripe in Spanish with an FAQ)
 - **Live streaming preview:** watch the brochure being written
-- **No made-up facts:** the prompt forbids inventing contact details, numbers or clients; missing details become `[Phone]`-style placeholders
+- **Edit before you download:** the **Edit** tab holds the brochure's text, so you can fix a sentence or fill in a missing detail, then press **Update PDF & DOCX** (no new AI call)
+- **No made-up facts:** the prompt forbids inventing contact details, numbers or clients. A missing detail becomes a `[Phone]`-style placeholder that the app lists for you to fill in, and any placeholder you leave is kept out of the PDF and DOCX (a line like `[Phone] – [Address]` is dropped, and so is a heading with nothing real left under it)
 - **Styled exports:** PDF with a title banner, section headings, real bullets and page numbers; DOCX with proper Word headings and lists
 - **Clickable links:** websites, emails and phone links open with one click in both the PDF and the Word file, including plain addresses like `huggingface.co` or `press@acme.com` in the text. Only web, email and phone links are made clickable, so an AI-written `javascript:` link stays plain text
 - **Clear errors:** plain-English messages for a wrong API key, rate limits, unknown models, blocked or JavaScript-only websites
