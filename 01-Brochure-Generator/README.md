@@ -30,6 +30,7 @@ Built as part of the Incapp AI Engineer course.
 - **Live streaming preview:** watch the brochure being written
 - **No made-up facts:** the prompt forbids inventing contact details, numbers or clients; missing details become `[Phone]`-style placeholders
 - **Styled exports:** PDF with a title banner, section headings, real bullets and page numbers; DOCX with proper Word headings and lists
+- **Clickable links:** websites, emails and phone links open with one click in both the PDF and the Word file, including plain addresses like `huggingface.co` or `press@acme.com` in the text. Only web, email and phone links are made clickable, so an AI-written `javascript:` link stays plain text
 - **Clear errors:** plain-English messages for a wrong API key, rate limits, unknown models, blocked or JavaScript-only websites
 - **Multiple LLM providers:** Groq by default, Gemini as a fallback (both via the OpenAI-compatible API)
 

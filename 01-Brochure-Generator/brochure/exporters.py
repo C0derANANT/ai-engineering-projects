@@ -12,6 +12,9 @@ from pathlib import Path
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
@@ -103,7 +106,7 @@ class Block:
     marker: str = ""   # "1." for numbered lists
 
 
-Run = tuple[str, bool, bool]  # (text, bold, italic)
+Run = tuple[str, bool, bool, str | None]  # (text, bold, italic, link URL or None)
 
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")  # Word refuses these
 _QUOTE = re.compile(r"^\s*(>\s?)+")
@@ -115,10 +118,25 @@ _TABLE_SEPARATOR = re.compile(r"^\s*\|?\s*:?-{3,}")
 _INLINE = re.compile(
     r"(\*\*\*.+?\*\*\*|\*\*.+?\*\*|__.+?__|\*(?!\s).+?(?<!\s)\*|(?<!\w)_(?!\s).+?(?<!\s)_(?!\w))"
 )
-_LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 _ESCAPED = re.compile(r"\\([\\`*_{}\[\]()#+\-.!&|>~])")
 # Escaped * and _ are parked on private-use characters so they aren't read as formatting
 _PARKED = {"*": "\ue000", "_": "\ue001"}
+
+# Links. A Markdown link [label](url) and anything that looks like a web address or
+# email in plain text become clickable. Plain domains only count with a common
+# ending (.com, .ai, .in ...) in lower case, so "Node.js" or "ASP.NET" stay text.
+_LINK_MD = r"\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)(?:\s+\"[^\"]*\")?\)"
+_URL = r"https?://[^\s<>()\[\]\"'`*]+"
+_EMAIL = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"
+_TLDS = ("com|org|net|io|ai|co|in|dev|app|tech|edu|gov|info|biz|me|us|uk|de|fr|es|it|nl"
+         "|jp|cn|kr|au|ca|xyz|store|shop|cloud")
+_DOMAIN = rf"(?:[A-Za-z0-9-]+\.)+(?:{_TLDS})(?![\w@-])(?:/[^\s<>()\[\]\"'`*]*)?"
+_AUTOLINK = re.compile(
+    rf"{_LINK_MD}|(?P<url>{_URL})|(?P<email>(?<![\w.%+-]){_EMAIL})|(?P<domain>(?<![\w@./:-]){_DOMAIN})"
+)
+_TRAILING = ".,;:!?_"           # sentence punctuation after an address is not part of it
+_LINK_OPEN, _LINK_CLOSE = "\ue002", "\ue003"  # wrap linked text while bold/italic is parsed
+_LINK_SPLIT = re.compile(f"({_LINK_OPEN}|{_LINK_CLOSE})")
 
 
 def parse_markdown(markdown: str) -> list[Block]:
@@ -158,16 +176,60 @@ def parse_markdown(markdown: str) -> list[Block]:
     return blocks
 
 
-def _link_text(m: re.Match) -> str:
-    label, target = m.group(1).strip(), re.sub(r"^(mailto|tel):", "", m.group(2))
-    bare = re.sub(r"^https?://(www\.)?", "", target).rstrip("/").lower()
-    return label if bare in label.lower() else f"{label} ({target})"
+def _park(text: str) -> str:
+    """Hide * and _ so an address like my_page_name isn't read as italics."""
+    return text.replace("*", _PARKED["*"]).replace("_", _PARKED["_"])
+
+
+def link_target(target: str) -> str | None:
+    """The URL a link should open, or None if it isn't safe to make clickable.
+
+    Only web, email and phone links are allowed: the text comes from an AI, so a
+    `javascript:` or `file:` link must never end up clickable in the brochure.
+    """
+    target = html.unescape(target.strip())
+    if re.match(r"(?i)(https?://|mailto:|tel:)", target):
+        return target
+    if re.fullmatch(_EMAIL, target):
+        return f"mailto:{target}"
+    if re.fullmatch(_DOMAIN, target):
+        return f"https://{target}"
+    return None
+
+
+def _mark_links(text: str, links: list[str]) -> str:
+    """Wrap every link in markers and collect its URL, in order, into `links`."""
+    def replace(m: re.Match) -> str:
+        if m.group(1) is not None:  # [label](url)
+            label, target = m.group(1).strip(), m.group(2)
+            url = link_target(target)
+            if url is None:  # a relative or unsafe link: keep just the words
+                return label
+            # Show the address after the label too ("our team (hi@acme.com)") so it
+            # still helps in a printed copy, unless the label already says it
+            shown = re.sub(r"^(mailto|tel):", "", target)
+            bare = re.sub(r"^https?://(www\.)?", "", shown).rstrip("/").lower()
+            same_phone = url.startswith("tel:") and re.sub(r"\D", "", label) == re.sub(r"\D", "", shown)
+            visible = label if bare in label.lower() or same_phone else f"{label} ({_park(shown)})"
+        else:  # a bare address; sentence punctuation right after it stays outside the link
+            address = m.group(0).rstrip(_TRAILING)
+            url = link_target(address)
+            if url is None:
+                return m.group(0)
+            links.append(url)
+            return f"{_LINK_OPEN}{_park(address)}{_LINK_CLOSE}{m.group(0)[len(address):]}"
+        links.append(url)
+        return f"{_LINK_OPEN}{visible}{_LINK_CLOSE}"
+
+    return _AUTOLINK.sub(replace, text)
 
 
 def parse_inline(text: str) -> list[Run]:
-    """Split text into runs of (text, bold, italic). Handles **bold**, *italic*,
-    __bold__, _italic_, links, `code`, backslash escapes and HTML entities."""
-    text = _LINK.sub(_link_text, text)
+    """Split text into runs of (text, bold, italic, link). Handles **bold**, *italic*,
+    __bold__, _italic_, links, bare URLs and emails, `code`, backslash escapes and
+    HTML entities."""
+    links: list[str] = []
+    text = _mark_links(text, links)
     text = text.replace("`", "").replace("~~", "")
     text = _ESCAPED.sub(lambda m: _PARKED.get(m.group(1), m.group(1)), text)
     text = html.unescape(text)
@@ -175,24 +237,36 @@ def parse_inline(text: str) -> list[Run]:
     def unpark(s: str) -> str:
         return s.replace(_PARKED["*"], "*").replace(_PARKED["_"], "_")
 
-    runs: list[Run] = []
+    styled: list[tuple[str, bool, bool]] = []
     for part in _INLINE.split(text):
         if not part:
             continue
         if part.startswith("***") and part.endswith("***") and len(part) > 6:
-            runs.append((unpark(part[3:-3]), True, True))
+            styled.append((part[3:-3], True, True))
         elif part[:2] in ("**", "__") and part[-2:] == part[:2] and len(part) > 4:
-            runs.append((unpark(part[2:-2]), True, False))
+            styled.append((part[2:-2], True, False))
         elif part[0] in "*_" and part[-1] == part[0] and len(part) > 2:
-            runs.append((unpark(part[1:-1]), False, True))
+            styled.append((part[1:-1], False, True))
         else:
-            runs.append((unpark(part), False, False))
+            styled.append((part, False, False))
+
+    # Give each piece of text the link it sits inside (a link can span bold and plain text)
+    runs: list[Run] = []
+    next_link, current = iter(links), None
+    for part, bold, italic in styled:
+        for piece in _LINK_SPLIT.split(part):
+            if piece == _LINK_OPEN:
+                current = next(next_link, None)
+            elif piece == _LINK_CLOSE:
+                current = None
+            elif piece:
+                runs.append((unpark(piece), bold, italic, current))
     return runs
 
 
 def plain_text(text: str) -> str:
     """Inline Markdown with the formatting marks removed (for headings)."""
-    return "".join(t for t, _, _ in parse_inline(text))
+    return "".join(run[0] for run in parse_inline(text))
 
 
 # --------------------------------------------------------------------------
@@ -348,10 +422,23 @@ class BrochurePDF(FPDF):
 
 
 def _pdf_write_runs(pdf: BrochurePDF, runs: list[Run], size: float, line_h: float):
-    for text, bold, italic in runs:
-        style = ("B" if bold else "") + ("I" if italic else "")
+    after_space = False
+    for text, bold, italic, link in runs:
+        text = pdf.clean(text)
+        # Links are underlined in the accent colour, and clicking them opens the URL
+        style = ("B" if bold else "") + ("I" if italic else "") + ("U" if link else "")
         pdf.set_font(pdf.body_font, style, size)
-        pdf.write(line_h, pdf.clean(text))
+        pdf.set_text_color(*(pdf.palette.accent if link else TEXT))
+        # write() only wraps at spaces inside its own text, so a long first word (like a
+        # URL right after "visit ") would be cut in half. Start a new line for it instead.
+        first_word = text.split(" ", 1)[0]
+        if after_space and first_word:
+            room = pdf.w - pdf.r_margin - pdf.get_x()
+            if room < pdf.get_string_width(first_word) <= pdf.w - pdf.r_margin - pdf.l_margin:
+                pdf.ln(line_h)
+        pdf.write(line_h, text, link=link or "")
+        after_space = text[-1:].isspace()
+    pdf.set_text_color(*TEXT)
     pdf.ln(line_h)
 
 
@@ -421,11 +508,24 @@ def export_pdf(markdown: str, company_name: str, basename: str | None = None,
 # --------------------------------------------------------------------------
 # DOCX
 # --------------------------------------------------------------------------
-def _docx_add_runs(paragraph, runs: list[Run]):
-    for text, bold, italic in runs:
+def _docx_add_runs(paragraph, runs: list[Run], link_color: RGB = ACCENT):
+    for text, bold, italic, link in runs:
         run = paragraph.add_run(text)
         run.bold = bold or None
         run.italic = italic or None
+        if link:
+            _docx_make_hyperlink(paragraph, run, link, link_color)
+
+
+def _docx_make_hyperlink(paragraph, run, url: str, color: RGB) -> None:
+    """Turn a run into a clickable link. python-docx has no API for this, so we
+    wrap the run in a <w:hyperlink> element that points at the URL."""
+    run.font.underline = True
+    run.font.color.rgb = RGBColor(*color)
+    hyperlink = OxmlElement("w:hyperlink")
+    hyperlink.set(qn("r:id"), paragraph.part.relate_to(url, RT.HYPERLINK, is_external=True))
+    run._r.addprevious(hyperlink)
+    hyperlink.append(run._r)
 
 
 def export_docx(markdown: str, company_name: str, basename: str | None = None,
@@ -456,10 +556,10 @@ def export_docx(markdown: str, company_name: str, basename: str | None = None,
                 first_heading = False
             else:
                 p = doc.add_heading(level=min(block.level - 1, 3))
-            _docx_add_runs(p, [(t, False, i) for t, _, i in runs])
+            _docx_add_runs(p, [(t, False, i, None) for t, _, i, _ in runs])  # headings: no links
         elif block.kind == "bullet":
             style = "List Bullet" if block.level == 0 else f"List Bullet {block.level + 1}"
-            _docx_add_runs(doc.add_paragraph(style=style), runs)
+            _docx_add_runs(doc.add_paragraph(style=style), runs, colors.accent)
         elif block.kind == "number":
             # Word's "List Number" style keeps counting across separate lists (a second
             # list would start at 4), so write the brochure's own number instead.
@@ -470,13 +570,13 @@ def export_docx(markdown: str, company_name: str, basename: str | None = None,
             p.paragraph_format.tab_stops.add_tab_stop(indent)
             p.paragraph_format.space_after = Pt(4)
             p.add_run(f"{block.marker}\t")
-            _docx_add_runs(p, runs)
+            _docx_add_runs(p, runs, colors.accent)
         elif block.kind == "rule":
             doc.add_paragraph()
         else:
             p = doc.add_paragraph()
             p.paragraph_format.space_after = Pt(8)
-            _docx_add_runs(p, runs)
+            _docx_add_runs(p, runs, colors.accent)
 
     path = _output_path(company_name, "docx", basename)
     doc.save(str(path))
