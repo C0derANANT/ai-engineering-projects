@@ -3,6 +3,7 @@
 import colorsys
 import html
 import importlib.util
+import io
 import re
 import secrets
 import unicodedata
@@ -18,6 +19,7 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
+from PIL import Image
 
 from .config import OUTPUT_DIR
 
@@ -527,9 +529,49 @@ def _pdf_write_runs(pdf: BrochurePDF, runs: list[Run], size: float, line_h: floa
     pdf.ln(line_h)
 
 
+def _logo_size(logo: bytes, max_h: float, max_w: float) -> tuple[float, float] | None:
+    """Width and height (mm) to draw a logo at, keeping its shape; None if unreadable."""
+    try:
+        with Image.open(io.BytesIO(logo)) as img:
+            ratio = img.width / img.height
+    except Exception:
+        return None
+    width, height = max_h * ratio, max_h
+    if width > max_w:
+        width, height = max_w, max_w / ratio
+    return width, height
+
+
+def _pdf_title_banner(pdf: BrochurePDF, title: str, logo: bytes | None = None) -> None:
+    """The coloured banner with the brochure's headline, and the company logo on the
+    right (on a white badge, so any logo stays visible on any brand colour)."""
+    colors, pad, line_h = pdf.palette, 6, 11
+    x, y, width = pdf.l_margin, pdf.get_y(), pdf.epw
+    size = _logo_size(logo, max_h=16, max_w=40) if logo else None
+    badge_pad = 2
+    badge = (size[0] + 2 * badge_pad, size[1] + 2 * badge_pad) if size else (0, 0)
+    text_w = width - 2 * pad - (badge[0] + pad if size else 0)
+
+    pdf.set_font(pdf.body_font, "B", 20)
+    text_h = pdf.multi_cell(text_w, line_h, title, dry_run=True, output="HEIGHT")
+    banner_h = max(text_h, badge[1]) + 2 * pad
+    pdf.set_fill_color(*colors.primary)
+    pdf.rect(x, y, width, banner_h, style="F")
+    if size:
+        bx, by = x + width - pad - badge[0], y + (banner_h - badge[1]) / 2
+        pdf.set_fill_color(*WHITE)
+        pdf.rect(bx, by, *badge, style="F", round_corners=True, corner_radius=2)
+        pdf.image(io.BytesIO(logo), x=bx + badge_pad, y=by + badge_pad, w=size[0], h=size[1])
+    pdf.set_text_color(*colors.on_primary)
+    pdf.set_xy(x + pad, y + (banner_h - text_h) / 2)
+    pdf.multi_cell(text_w, line_h, title, align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_y(y + banner_h)
+
+
 def export_pdf(markdown: str, company_name: str, basename: str | None = None,
-               color: str | None = None) -> Path:
-    """Write the brochure as an A4 PDF. `color` is the brand colour, e.g. '#e11d48'."""
+               color: str | None = None, logo: bytes | None = None) -> Path:
+    """Write the brochure as an A4 PDF. `color` is the brand colour, e.g. '#e11d48';
+    `logo` is an image (PNG/JPEG bytes) for the title banner."""
     colors = make_palette(color)
     pdf = BrochurePDF(company_name, sample_text=markdown, palette=colors)
     pdf.add_page()
@@ -537,12 +579,7 @@ def export_pdf(markdown: str, company_name: str, basename: str | None = None,
 
     for block in parse_markdown(remove_placeholders(markdown)):
         if block.kind == "heading" and (block.level == 1 or first_heading):
-            # Title banner
-            pdf.set_fill_color(*colors.primary)
-            pdf.set_text_color(*colors.on_primary)
-            pdf.set_font(pdf.body_font, "B", 20)
-            pdf.multi_cell(0, 11, pdf.clean(plain_text(block.text)), fill=True, padding=(6, 6),
-                           align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            _pdf_title_banner(pdf, pdf.clean(plain_text(block.text)), logo if first_heading else None)
             pdf.ln(4)
             first_heading = False
         elif block.kind == "heading":
@@ -614,8 +651,9 @@ def _docx_make_hyperlink(paragraph, run, url: str, color: RGB) -> None:
 
 
 def export_docx(markdown: str, company_name: str, basename: str | None = None,
-                color: str | None = None) -> Path:
-    """Write the brochure as a Word file. `color` is the brand colour, e.g. '#e11d48'."""
+                color: str | None = None, logo: bytes | None = None) -> Path:
+    """Write the brochure as a Word file. `color` is the brand colour, e.g. '#e11d48';
+    `logo` is an image (PNG/JPEG bytes) shown above the title."""
     colors = make_palette(color)
     doc = Document()
     doc.core_properties.title = f"{company_name} brochure"
@@ -631,6 +669,9 @@ def export_docx(markdown: str, company_name: str, basename: str | None = None,
     footer = doc.sections[0].footer.paragraphs[0]
     footer.text = f"{company_name} | Company Brochure"
     footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    if logo and (size := _logo_size(logo, max_h=1.6, max_w=4)):  # centimetres
+        doc.add_picture(io.BytesIO(logo), width=Cm(size[0]), height=Cm(size[1]))
 
     first_heading = True
     for block in parse_markdown(remove_placeholders(markdown)):

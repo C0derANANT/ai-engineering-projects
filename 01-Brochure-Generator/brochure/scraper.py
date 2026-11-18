@@ -1,5 +1,6 @@
 """Scrapes a company website (homepage + a few key pages) for brochure context."""
 
+import io
 import ipaddress
 import logging
 import os
@@ -11,6 +12,7 @@ from urllib.parse import unquote, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,15 @@ MAX_CHARS_PER_PAGE = 5_000
 MAX_TOTAL_CHARS = 15_000
 MAX_EXTRA_PAGES = 3
 THIN_CONTENT_CHARS = 300   # less text than this usually means a JavaScript-only site
+
+# Company logo for the PDF title banner
+MAX_LOGO_BYTES = 1_000_000     # skip bigger images (a logo is rarely over 200 KB)
+MAX_LOGO_PIXELS = 16_000_000   # refuse "decompression bombs": tiny files that unpack to huge images
+MIN_LOGO_PX = 64               # 16 px and 32 px favicons look blurry when printed
+MAX_LOGO_RATIO = 1.5           # logos and icons are about square; 1.91:1 og:images are usually photos
+MAX_LOGO_TRIES = 4             # image URLs to try before giving up
+LOGO_BUDGET = 8                # seconds
+_LOGO_FORMATS = {"PNG", "JPEG", "GIF", "WEBP", "ICO", "BMP"}
 
 # Pages most useful for a brochure. One page is taken from each group, best keyword first.
 KEY_PAGE_GROUPS = [
@@ -50,6 +61,7 @@ class WebsiteContext:
     description: str = ""
     pages: dict[str, str] = field(default_factory=dict)  # url -> text
     contact: list[str] = field(default_factory=list)     # emails, phones, footer text
+    logo: bytes | None = field(default=None, repr=False)  # PNG of the company's logo, if found
 
     @property
     def text_chars(self) -> int:
@@ -112,20 +124,24 @@ def _check_public_host(url: str) -> None:
             raise ScrapeError("it points to a private or local network address, which isn't allowed")
 
 
-def _fetch(session: requests.Session, url: str, deadline: float) -> tuple[str, BeautifulSoup]:
-    """Download one HTML page, following redirects safely. Returns (final_url, soup)."""
+def _open(session: requests.Session, url: str, headers: dict | None = None) -> tuple[str, requests.Response]:
+    """Start a GET, following redirects one at a time so every hop passes the
+    public-address check. Returns (final_url, streaming response)."""
     for _ in range(MAX_REDIRECTS + 1):
         _check_public_host(url)
-        response = session.get(url, timeout=TIMEOUT, stream=True, allow_redirects=False)
+        response = session.get(url, headers=headers, timeout=TIMEOUT, stream=True, allow_redirects=False)
         if not response.is_redirect:
-            break
+            return url, response
         response.close()
         url = urljoin(url, response.headers["Location"])
         if urlparse(url).scheme not in ("http", "https"):
             raise ScrapeError("it redirects to something that isn't a web page")
-    else:
-        raise ScrapeError("it redirects too many times")
+    raise ScrapeError("it redirects too many times")
 
+
+def _fetch(session: requests.Session, url: str, deadline: float) -> tuple[str, BeautifulSoup]:
+    """Download one HTML page, following redirects safely. Returns (final_url, soup)."""
+    url, response = _open(session, url)
     with response:
         response.raise_for_status()
         content_type = response.headers.get("Content-Type", "").lower()
@@ -215,6 +231,107 @@ def _key_page_links(soup: BeautifulSoup, base_url: str) -> list[str]:
     return picked[:MAX_EXTRA_PAGES]
 
 
+# --------------------------------------------------------------------------
+# Logo
+# --------------------------------------------------------------------------
+def _icon_size(sizes: str | None) -> int:
+    """'180x180' -> 180, '16x16 32x32' -> 32, 'any' or missing -> 0."""
+    return max((int(n) for n in re.findall(r"(\d+)x\d+", sizes or "")), default=0)
+
+
+def _logo_candidates(soup: BeautifulSoup, base_url: str) -> list[str]:
+    """Image URLs that may be the company's logo, best first:
+    apple-touch-icon (a square logo, usually 180 px), a large favicon, the usual
+    /apple-touch-icon.png path, the og:image picture used for social shares
+    (only kept later if it's square, i.e. a logo rather than a photo), then
+    favicons of unknown size."""
+    touch, sized, unsized = [], [], []
+    for link in soup.find_all("link", rel=True, href=True):
+        rel = " ".join(link["rel"]).lower() if isinstance(link["rel"], list) else str(link["rel"]).lower()
+        href = link["href"].strip()
+        if "svg" in (link.get("type") or "").lower() or urlparse(href).path.lower().endswith(".svg"):
+            continue  # SVG can't be checked or drawn reliably
+        size = _icon_size(link.get("sizes"))
+        if "apple-touch-icon" in rel:
+            touch.append((size or 180, href))
+        elif "icon" in rel and size >= MIN_LOGO_PX:
+            sized.append((size, href))
+        elif "icon" in rel and not size:
+            unsized.append(href)  # sizes="32x32" and smaller are skipped outright
+    hrefs = [href for _, href in sorted(touch, reverse=True) + sorted(sized, reverse=True)]
+    if not touch:
+        hrefs.append("/apple-touch-icon.png")  # many sites have it without linking to it
+    for name in ("og:image", "og:image:url", "twitter:image"):
+        meta = soup.find("meta", attrs={"property": name}) or soup.find("meta", attrs={"name": name})
+        if meta and meta.get("content"):
+            hrefs.append(meta["content"].strip())
+    hrefs += unsized + ["/favicon.ico"]  # an .ico often holds a 64 px or larger size too
+
+    urls: list[str] = []
+    for href in hrefs:
+        url = urljoin(base_url, href)  # also handles "//cdn.example.com/logo.png"
+        if urlparse(url).scheme in ("http", "https") and url not in urls:
+            urls.append(url)
+    return urls
+
+
+def _usable_logo(data: bytes) -> bytes | None:
+    """Check that downloaded bytes are a real, reasonably sized image and return
+    it as a PNG (at most 512 px), or None if it can't be used."""
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            width, height = img.size  # read from the header, before decoding anything
+            if (img.format not in _LOGO_FORMATS or min(width, height) < MIN_LOGO_PX
+                    or width * height > MAX_LOGO_PIXELS
+                    or max(width, height) > MAX_LOGO_RATIO * min(width, height)):
+                return None
+            img.load()
+            logo = img.convert("RGBA")
+        logo.thumbnail((512, 512))
+        out = io.BytesIO()
+        logo.save(out, "PNG")
+        return out.getvalue()
+    except Exception as e:  # Pillow raises many kinds of errors for broken files
+        logger.info("Not a usable logo image: %s", e)
+        return None
+
+
+def _download_logo(session: requests.Session, url: str, deadline: float) -> bytes | None:
+    """Download one candidate image with the same safety checks as pages, capped at 1 MB."""
+    url, response = _open(session, url, headers={"Accept": "image/png,image/*;q=0.9,*/*;q=0.5"})
+    with response:
+        response.raise_for_status()
+        content_type = response.headers.get("Content-Type", "").split(";")[0].strip().lower()
+        if content_type and not content_type.startswith("image/") and content_type != "application/octet-stream":
+            return None
+        if "svg" in content_type:
+            return None
+        body = bytearray()
+        for chunk in response.iter_content(64 * 1024):
+            body += chunk
+            if len(body) > MAX_LOGO_BYTES or time.monotonic() > deadline:
+                return None  # too big or too slow; half an image is no use
+    return _usable_logo(bytes(body))
+
+
+def find_logo(session: requests.Session, candidates: list[str], deadline: float) -> bytes | None:
+    """The first candidate that downloads as a usable image, or None (the PDF then
+    simply has no logo)."""
+    deadline = min(deadline, time.monotonic() + LOGO_BUDGET)
+    for url in candidates[:MAX_LOGO_TRIES]:
+        if time.monotonic() > deadline:
+            break
+        try:
+            logo = _download_logo(session, url, deadline)
+        except Exception as e:
+            logger.info("Skipping logo %s: %s", url, e)
+            continue
+        if logo:
+            logger.info("Using %s as the logo", url)
+            return logo
+    return None
+
+
 def fetch_website_context(url: str) -> WebsiteContext:
     """Scrape the homepage plus up to 3 key pages.
 
@@ -239,6 +356,7 @@ def fetch_website_context(url: str) -> WebsiteContext:
             ctx.description = meta["content"].strip()
         ctx.contact = _contact_details(soup)
         extra_links = _key_page_links(soup, final_url)
+        logo_urls = _logo_candidates(soup, final_url)
         ctx.pages[final_url] = _visible_text(soup)
 
         for link in extra_links:
@@ -257,6 +375,8 @@ def fetch_website_context(url: str) -> WebsiteContext:
             text = _visible_text(page)
             if text:
                 ctx.pages[page_url] = text
+
+        ctx.logo = find_logo(session, logo_urls, deadline)  # None if there's no usable image
 
     ctx.contact = ctx.contact[:12]
     logger.info("Scraped %d page(s), %d characters from %s", len(ctx.pages), ctx.text_chars, final_url)

@@ -22,6 +22,7 @@ Built as part of the Incapp AI Engineer course.
 ## ✨ Features
 
 - **Website-aware:** scrapes the homepage plus the About, Services and Contact/Careers pages for real facts, including emails and phone numbers for "Get in Touch"
+- **Company logo:** finds the site's logo (its app icon, a large favicon, or a square social-share image) and puts it on the PDF title banner and at the top of the Word file. Logos get the same safety checks as pages (no private network addresses, max 1 MB, must be a real image of at least 64 px); with no usable logo the banner simply has none
 - **11 languages:** English, Hindi, Marathi, Spanish, French, German, Portuguese, Italian, Japanese, Chinese and Korean, with headings translated too
 - **Pick your sections:** About Us, Mission & Vision, Services & Products, Technologies, Why Choose Us, Culture, FAQ, Get in Touch
 - **Brand colour:** recolours the PDF title banner, headings and bullets and the Word headings. Light colours stay readable because text colours are adjusted automatically. Changing the colour after generating re-exports the files instantly, with no new AI call
@@ -42,6 +43,7 @@ Built as part of the Incapp AI Engineer course.
 | Web UI         | Gradio                          |
 | LLM client     | OpenAI SDK → Groq / Gemini      |
 | Web scraping   | Requests + BeautifulSoup        |
+| Logo images    | Pillow                          |
 | PDF export     | fpdf2 + uharfbuzz (text shaping for Hindi and other complex scripts) |
 | Word export    | python-docx                     |
 | Config         | python-dotenv                   |
@@ -54,7 +56,7 @@ Built as part of the Incapp AI Engineer course.
 ├── Brochure-Generator.ipynb  # Notebook: use the package or launch the app from Jupyter
 ├── brochure/
 │   ├── config.py             # API keys, model and paths
-│   ├── scraper.py            # Website scraping
+│   ├── scraper.py            # Website scraping + logo finder
 │   ├── generator.py          # Prompt building + LLM streaming
 │   └── exporters.py          # Markdown → PDF / DOCX, brand colours, fonts
 ├── Dockerfile                # Container for the public demo (with Hindi + CJK fonts)

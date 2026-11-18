@@ -64,10 +64,10 @@ EXAMPLE_LABELS = [
 ]
 
 
-def _export(markdown: str, company_name: str, color: str) -> tuple[str, str]:
+def _export(markdown: str, company_name: str, color: str, logo: bytes | None = None) -> tuple[str, str]:
     basename = make_basename(company_name)
-    pdf_path = export_pdf(markdown, company_name, basename, color=color)
-    docx_path = export_docx(markdown, company_name, basename, color=color)
+    pdf_path = export_pdf(markdown, company_name, basename, color=color, logo=logo)
+    docx_path = export_docx(markdown, company_name, basename, color=color, logo=logo)
     logger.info("Saved %s and %s", pdf_path.name, docx_path.name)
     return str(pdf_path), str(docx_path)
 
@@ -98,7 +98,7 @@ def reexport(brochure, markdown, color):
     if not brochure or not (markdown or "").strip():
         return gr.skip(), gr.skip(), gr.skip()
     try:
-        pdf_path, docx_path = _export(markdown, brochure["company"], color)
+        pdf_path, docx_path = _export(markdown, brochure["company"], color, brochure.get("logo"))
     except Exception as e:
         logger.exception("Re-export failed")
         raise gr.Error(f"Couldn't update the files: {e}")
@@ -154,10 +154,11 @@ def generate(company_name, website, audience, tone, fmt, length, language, secti
     except BrochureError as e:
         raise gr.Error(str(e))
 
-    brochure = {"company": company_name}
+    # Kept for re-exports after an edit or colour change (no new scrape or AI call)
+    brochure = {"company": company_name, "logo": website_ctx.logo if website_ctx else None}
     progress(0.9, desc="Creating PDF and DOCX...")
     try:
-        pdf_path, docx_path = _export(markdown, company_name, color)
+        pdf_path, docx_path = _export(markdown, company_name, color, brochure["logo"])
     except Exception as e:  # Show the preview even if exporting fails
         logger.exception("Export failed")
         gr.Warning(f"Brochure created, but exporting failed: {e}")
