@@ -125,14 +125,15 @@ _ESCAPED = re.compile(r"\\([\\`*_{}\[\]()#+\-.!&|>~])")
 _PARKED = {"*": "\ue000", "_": "\ue001"}
 
 # Links. A Markdown link [label](url) and anything that looks like a web address or
-# email in plain text become clickable. Plain domains only count with a common
-# ending (.com, .ai, .in ...) in lower case, so "Node.js" or "ASP.NET" stay text.
+# email in plain text become clickable. Plain domains without "www." only count with
+# a common ending (.com, .ai, .in ...) in lower case, so "Node.js" or "ASP.NET" stay text.
 _LINK_MD = r"\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)(?:\s+\"[^\"]*\")?\)"
 _URL = r"https?://[^\s<>()\[\]\"'`*]+"
 _EMAIL = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"
 _TLDS = ("com|org|net|io|ai|co|in|dev|app|tech|edu|gov|info|biz|me|us|uk|de|fr|es|it|nl"
          "|jp|cn|kr|au|ca|xyz|store|shop|cloud")
-_DOMAIN = rf"(?:[A-Za-z0-9-]+\.)+(?:{_TLDS})(?![\w@-])(?:/[^\s<>()\[\]\"'`*]*)?"
+_DOMAIN = (rf"(?:www\.(?:[A-Za-z0-9-]+\.)+[A-Za-z]{{2,}}|(?:[A-Za-z0-9-]+\.)+(?:{_TLDS}))"
+           r"(?![\w@-])(?:/[^\s<>()\[\]\"'`*]*)?")
 _AUTOLINK = re.compile(
     rf"{_LINK_MD}|(?P<url>{_URL})|(?P<email>(?<![\w.%+-]){_EMAIL})|(?P<domain>(?<![\w@./:-]){_DOMAIN})"
 )

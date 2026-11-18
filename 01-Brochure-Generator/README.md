@@ -1,5 +1,7 @@
 # 🏢 AI Company Brochure Generator
 
+[![Tests](https://github.com/C0derANANT/ai-engineering-projects/actions/workflows/brochure-tests.yml/badge.svg)](https://github.com/C0derANANT/ai-engineering-projects/actions/workflows/brochure-tests.yml)
+
 Turn any company's website into a polished, ready-to-share brochure in seconds.
 The app reads the company's website, uses an LLM to write the brochure in the
 language, tone and sections you choose, shows a live preview, and exports it as
@@ -35,6 +37,7 @@ Built as part of the Incapp AI Engineer course.
 - **Clickable links:** websites, emails and phone links open with one click in both the PDF and the Word file, including plain addresses like `huggingface.co` or `press@acme.com` in the text. Only web, email and phone links are made clickable, so an AI-written `javascript:` link stays plain text
 - **Clear errors:** plain-English messages for a wrong API key, rate limits, unknown models, blocked or JavaScript-only websites
 - **Multiple LLM providers:** Groq by default, Gemini as a fallback (both via the OpenAI-compatible API)
+- **Tested:** pytest tests for URL checks, the private-network block, page and link picking, logos, links, placeholders and the PDF/DOCX exports, run by GitHub Actions on every push
 
 ## 🧰 Tech Stack
 
@@ -47,6 +50,7 @@ Built as part of the Incapp AI Engineer course.
 | PDF export     | fpdf2 + uharfbuzz (text shaping for Hindi and other complex scripts) |
 | Word export    | python-docx                     |
 | Config         | python-dotenv                   |
+| Tests and CI   | pytest + GitHub Actions         |
 
 ## 📁 Project Structure
 
@@ -59,13 +63,19 @@ Built as part of the Incapp AI Engineer course.
 │   ├── scraper.py            # Website scraping + logo finder
 │   ├── generator.py          # Prompt building + LLM streaming
 │   └── exporters.py          # Markdown → PDF / DOCX, brand colours, fonts
+├── tests/                    # pytest tests (no internet or API key needed)
 ├── Dockerfile                # Container for the public demo (with Hindi + CJK fonts)
 ├── docs/                     # README screenshots
 ├── outputs/                  # Generated brochures (git-ignored)
 ├── legacy/                   # Original v1 notebook
 ├── requirements.txt
+├── requirements-dev.txt      # requirements.txt + pytest
+├── pytest.ini
 └── .env.example
 ```
+
+GitHub Actions workflows live at the repo root in [`.github/workflows/`](../.github/workflows):
+`brochure-tests.yml` runs the tests on every push and `keep-awake.yml` keeps the demo awake.
 
 ## 🚀 Getting Started
 
@@ -91,6 +101,16 @@ python app.py --port 7860    # fixed port
 > A `.env` in any parent folder also works, since the app searches upward for it.
 > Your key stays in `.env`, which git ignores. A `--share` link doesn't reveal the key,
 > but anyone with the link uses your quota, so only share it with people you trust.
+
+## 🧪 Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+The tests never touch the internet or need an API key (DNS lookups are faked), so they run
+anywhere in a few seconds. GitHub Actions runs the same command on every push.
 
 ## ☁️ Deploy Your Own Copy (Render, free)
 
@@ -130,6 +150,13 @@ On Linux, install `fonts-noto-core` and `fonts-noto-cjk` (the Dockerfile already
 The Word file never needs extra fonts.
 
 ## 📝 Changelog
+
+**v4:** nicer files and a faster demo
+- Websites, emails and phone links are clickable in the PDF and DOCX
+- An **Edit** tab to fix the text or fill in missing details before downloading; unfilled `[Phone]`-style placeholders are kept out of the files
+- The company's logo on the PDF title banner and at the top of the Word file
+- A scheduled GitHub Action keeps the free Render demo awake, so visitors no longer wait a minute for it to start
+- pytest tests and a GitHub Actions workflow that runs them on every push
 
 **v3:** bug fixes and new options
 - New: output language, section picker, brand colour picker, richer examples

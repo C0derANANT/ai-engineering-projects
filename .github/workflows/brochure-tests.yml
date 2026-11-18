@@ -1,0 +1,32 @@
+# Runs the Brochure Generator's tests on every push.
+# The tests never use the internet or an API key, so they need no secrets.
+name: Brochure Generator tests
+
+on:
+  push:
+  workflow_dispatch:  # adds a "Run workflow" button in the Actions tab
+
+permissions:
+  contents: read  # only needs to read the code
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: 01-Brochure-Generator
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"  # same as the Dockerfile
+          cache: pip
+          cache-dependency-path: 01-Brochure-Generator/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest -v
