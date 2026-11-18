@@ -5,7 +5,19 @@ The app reads the company's website, uses an LLM to write the brochure in the
 language, tone and sections you choose, shows a live preview, and exports it as
 a styled **PDF** and **Word (DOCX)** file in your brand colour.
 
+**🌐 Live demo: [ai-brochure-generator-af0t.onrender.com](https://ai-brochure-generator-af0t.onrender.com)**
+(free hosting: if nobody has used it for 15 minutes, the first visit takes about a minute to wake up)
+
 Built as part of the Incapp AI Engineer course.
+
+![The app: settings on the left, live brochure preview on the right](docs/app.jpg)
+
+<details>
+<summary>Sample output: a Hindi brochure PDF generated on the live site</summary>
+
+![First page of a Hindi brochure PDF for Chai Point, in green](docs/sample-hindi-pdf.jpg)
+
+</details>
 
 ## ✨ Features
 
@@ -44,6 +56,7 @@ Built as part of the Incapp AI Engineer course.
 │   ├── generator.py          # Prompt building + LLM streaming
 │   └── exporters.py          # Markdown → PDF / DOCX, brand colours, fonts
 ├── Dockerfile                # Container for the public demo (with Hindi + CJK fonts)
+├── docs/                     # README screenshots
 ├── outputs/                  # Generated brochures (git-ignored)
 ├── legacy/                   # Original v1 notebook
 ├── requirements.txt
