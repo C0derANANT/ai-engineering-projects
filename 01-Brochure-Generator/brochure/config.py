@@ -8,6 +8,8 @@ from dotenv import dotenv_values, find_dotenv
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = PROJECT_DIR / "outputs"
+# Hugging Face sets SPACE_ID when the app runs as a Space
+ON_SPACES = bool(os.getenv("SPACE_ID"))
 
 
 def _load_env() -> None:
@@ -64,6 +66,13 @@ def available_providers() -> dict[str, LLMConfig]:
             model_env="GEMINI_MODEL",
         )
     return providers
+
+
+def missing_key_message() -> str:
+    if ON_SPACES:
+        return ("This demo isn't set up yet: the Space owner needs to add GROQ_API_KEY "
+                "under Settings → Variables and secrets.")
+    return "No API key found. Add GROQ_API_KEY (or GOOGLE_API_KEY) to your .env file and restart the app."
 
 
 def get_llm_config(provider: str | None = None) -> LLMConfig | None:

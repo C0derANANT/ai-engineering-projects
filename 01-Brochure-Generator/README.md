@@ -1,30 +1,36 @@
 # 🏢 AI Company Brochure Generator
 
 Turn any company's website into a polished, ready-to-share brochure in seconds.
-The app reads the company's website, uses an LLM to write the brochure, shows a
-live preview, and exports it as a styled **PDF** and **Word (DOCX)** file.
+The app reads the company's website, uses an LLM to write the brochure in the
+language, tone and sections you choose, shows a live preview, and exports it as
+a styled **PDF** and **Word (DOCX)** file in your brand colour.
 
 Built as part of the Incapp AI Engineer course.
 
 ## ✨ Features
 
-- **Website-aware:** scrapes the homepage plus key pages (About, Services, Careers) for real facts
+- **Website-aware:** scrapes the homepage plus the About, Services and Contact/Careers pages for real facts, including emails and phone numbers for "Get in Touch"
+- **11 languages:** English, Hindi, Marathi, Spanish, French, German, Portuguese, Italian, Japanese, Chinese and Korean, with headings translated too
+- **Pick your sections:** About Us, Mission & Vision, Services & Products, Technologies, Why Choose Us, Culture, FAQ, Get in Touch
+- **Brand colour:** recolours the PDF title banner, headings and bullets and the Word headings. Light colours stay readable because text colours are adjusted automatically. Changing the colour after generating re-exports the files instantly, with no new AI call
+- **Customisable style:** tone (Professional, Friendly, Witty, Luxury), format (bullets / paragraphs / mixed), length and target audience
+- **One-click examples:** five ready-made setups (e.g. Chai Point in Hindi, Stripe in Spanish with an FAQ)
 - **Live streaming preview:** watch the brochure being written
-- **Customisable:** tone (Professional, Friendly, Witty, Luxury), format (bullets / paragraphs / mixed), length and target audience
-- **No made-up facts:** the prompt forbids inventing contact details, numbers or clients; it uses `[Phone]` style placeholders instead
+- **No made-up facts:** the prompt forbids inventing contact details, numbers or clients; missing details become `[Phone]`-style placeholders
 - **Styled exports:** PDF with a title banner, section headings, real bullets and page numbers; DOCX with proper Word headings and lists
+- **Clear errors:** plain-English messages for a wrong API key, rate limits, unknown models, blocked or JavaScript-only websites
 - **Multiple LLM providers:** Groq by default, Gemini as a fallback (both via the OpenAI-compatible API)
 
 ## 🧰 Tech Stack
 
-| Purpose        | Library                    |
-| -------------- | -------------------------- |
-| Web UI         | Gradio                     |
-| LLM client     | OpenAI SDK → Groq / Gemini |
-| Web scraping   | Requests + BeautifulSoup   |
-| PDF export     | fpdf2                      |
-| Word export    | python-docx                |
-| Config         | python-dotenv              |
+| Purpose        | Library                         |
+| -------------- | ------------------------------- |
+| Web UI         | Gradio                          |
+| LLM client     | OpenAI SDK → Groq / Gemini      |
+| Web scraping   | Requests + BeautifulSoup        |
+| PDF export     | fpdf2 + uharfbuzz (text shaping for Hindi and other complex scripts) |
+| Word export    | python-docx                     |
+| Config         | python-dotenv                   |
 
 ## 📁 Project Structure
 
@@ -36,7 +42,10 @@ Built as part of the Incapp AI Engineer course.
 │   ├── config.py             # API keys, model and paths
 │   ├── scraper.py            # Website scraping
 │   ├── generator.py          # Prompt building + LLM streaming
-│   └── exporters.py          # Markdown → PDF / DOCX
+│   └── exporters.py          # Markdown → PDF / DOCX, brand colours, fonts
+├── deploy_space.py           # Uploads the app to a Hugging Face Space
+├── space_card.md             # The Space's settings + description (becomes its README)
+├── packages.txt              # Linux fonts the Space installs (Hindi, CJK)
 ├── outputs/                  # Generated brochures (git-ignored)
 ├── legacy/                   # Original v1 notebook
 ├── requirements.txt
@@ -53,22 +62,68 @@ pip install -r requirements.txt
 cp .env.example .env     # then paste your GROQ_API_KEY
 
 # 3. Run
-python app.py            # opens in your browser + prints a public link
+python app.py            # opens in your browser
+```
+
+Options:
+
+```bash
+python app.py --share        # also print a temporary public link (72 h)
+python app.py --no-browser   # don't open a browser tab
+python app.py --port 7860    # fixed port
 ```
 
 > A `.env` in any parent folder also works, since the app searches upward for it.
+> Your key stays in `.env`, which git ignores. A `--share` link doesn't reveal the key,
+> but anyone with the link uses your quota, so only share it with people you trust.
+
+## ☁️ Deploy Your Own Copy (Hugging Face Spaces)
+
+A Space gives you a free public URL where visitors don't need a key or any setup.
+
+```bash
+hf auth login                                          # once; token with "write" access
+python deploy_space.py your-username/ai-brochure-generator
+```
+
+Then open the Space → **Settings → Variables and secrets → New secret**, name it
+`GROQ_API_KEY` and paste your Groq key. Hugging Face keeps the secret on its servers:
+it is never in the code and visitors can't see it. On Groq's free plan the worst case
+is hitting the rate limit (the app tells visitors to wait a minute); there's no bill.
+
+The deploy script uploads only the app's own files, never `.env` or `outputs/`.
+Run it again after every change.
 
 ## ⚙️ Configuration
 
-| Variable         | Required | Default                 |
-| ---------------- | -------- | ----------------------- |
-| `GROQ_API_KEY`   | Yes*     | none                    |
-| `GROQ_MODEL`     | No       | `openai/gpt-oss-120b`   |
-| `GOOGLE_API_KEY` | Yes*     | none (used if no Groq key) |
+| Variable             | Required | Default                    |
+| -------------------- | -------- | -------------------------- |
+| `GROQ_API_KEY`       | Yes*     | none                       |
+| `GROQ_MODEL`         | No       | `openai/gpt-oss-120b`      |
+| `GOOGLE_API_KEY`     | Yes*     | none (used if no Groq key) |
+| `GEMINI_MODEL`       | No       | `gemini-3.6-flash`         |
+| `ALLOW_PRIVATE_URLS` | No       | off. Set to `1` to let the scraper read `localhost` / home-network sites (blocked by default because the app can be shared publicly) |
 
 \* At least one of the two keys is required.
 
+**Fonts for non-English PDFs:** on macOS every listed language works out of the box.
+On Windows the app uses the built-in Nirmala UI, Microsoft YaHei, Yu Gothic and Malgun Gothic fonts.
+On Linux, install `fonts-noto-core` and `fonts-noto-cjk` (the Space does this from `packages.txt`).
+The Word file never needs extra fonts.
+
 ## 📝 Changelog
+
+**v3:** bug fixes and new options
+- New: output language, section picker, brand colour picker, richer examples
+- Ready for Hugging Face Spaces (`deploy_space.py`); the public link is now opt-in with `--share`
+- Hindi, Chinese, Japanese and Korean text no longer disappears from the PDF; Arabic letters join correctly
+- Huge pages no longer freeze the app (downloads capped at 2 MB / 25 s; a 48 MB page went from 69 s and 1.7 GB of RAM to under 3 s)
+- The scraper refuses private network addresses, skips non-HTML links (PDFs, images), keeps contact details, and prefers the About page
+- A dropped connection or a cut-off reply is reported instead of being exported as a finished brochure
+- `<think>` reasoning, "Here is your brochure" intros and code fences are stripped from model output
+- No more literal `**` in PDF headings; `_italic_`, `__bold__`, escapes and `&amp;` are handled
+- Word numbered lists restart at 1; file names are unique even for same-second runs and very long company names
+- The API key is checked before scraping, and blank values in `.env` no longer override keys set in the shell
 
 **v2:** refactored the notebook into a modular app:
 - Fixed PDF exports where every hyphen and bullet showed up as `?`

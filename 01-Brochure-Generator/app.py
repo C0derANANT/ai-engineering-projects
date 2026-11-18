@@ -2,12 +2,14 @@
 AI Company Brochure Generator - Gradio web app.
 
 Enter a company name (and optionally its website). The app scrapes the
-website, asks an LLM (Groq or Gemini) to write a brochure, streams the preview,
-and exports it as a styled PDF and DOCX.
+website, asks an LLM (Groq or Gemini) to write a brochure in the chosen
+language, tone and sections, streams the preview, and exports it as a PDF and
+DOCX in your brand colour.
 
 Run:
     pip install -r requirements.txt
-    python app.py            # opens locally + creates a public share link
+    python app.py            # opens in your browser (local only)
+    python app.py --share    # also creates a temporary public link
 """
 
 import argparse
@@ -26,23 +28,71 @@ from brochure import (
     normalize_url,
     stream_brochure,
 )
-from brochure.config import OUTPUT_DIR, get_llm_config
-from brochure.generator import FORMATS, LENGTHS, TONES
+from brochure.config import ON_SPACES, OUTPUT_DIR, get_llm_config, missing_key_message
+from brochure.exporters import DEFAULT_COLOR
+from brochure.generator import DEFAULT_SECTIONS, FORMATS, LANGUAGES, LENGTHS, SECTIONS, TONES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 # Keep logs readable: hide per-request HTTP noise from libraries
-for noisy in ("httpx", "urllib3", "openai", "fontTools"):
+for noisy in ("httpx", "urllib3", "openai", "fontTools", "fpdf"):
     logging.getLogger(noisy).setLevel(logging.WARNING)
 logger = logging.getLogger("brochure_app")
 
+# company, website, audience, tone, format, length, language, sections, brand colour
+EXAMPLES = [
+    ["Hugging Face", "huggingface.co", "developers and AI teams", "Friendly", "Mixed", "Standard",
+     "English", ["About Us", "Mission & Vision", "Our Services & Products", "Why Choose Us", "Get in Touch"],
+     "#ffd21e"],
+    ["Groq", "groq.com", "enterprise CTOs", "Professional", "Bullet points", "Short",
+     "English", ["About Us", "Our Services & Products", "Technologies & Expertise", "Get in Touch"],
+     "#f55036"],
+    ["Chai Point", "chaipoint.com", "young professionals in India", "Witty / Creative", "Mixed", "Standard",
+     "Hindi", ["About Us", "Our Services & Products", "Our Culture", "Get in Touch"],
+     "#2e7d32"],
+    ["Stripe", "stripe.com", "startup founders", "Premium / Luxury", "Paragraphs", "Detailed",
+     "Spanish", ["About Us", "Mission & Vision", "Our Services & Products", "Why Choose Us", "FAQ", "Get in Touch"],
+     "#635bff"],
+    ["Blue Tokai Coffee", "", "cafe owners", "Friendly", "Bullet points", "Short",
+     "English", DEFAULT_SECTIONS, "#6f4e37"],
+]
+EXAMPLE_LABELS = [
+    "Hugging Face · friendly · yellow",
+    "Groq · short bullet points",
+    "Chai Point · in Hindi",
+    "Stripe · detailed, in Spanish + FAQ",
+    "Blue Tokai · no website",
+]
 
-def generate(company_name, website, audience, tone, fmt, length, progress=gr.Progress()):
-    """Gradio handler: yields (preview_markdown, pdf_file, docx_file)."""
+
+def _export(markdown: str, company_name: str, color: str) -> tuple[str, str]:
+    basename = make_basename(company_name)
+    pdf_path = export_pdf(markdown, company_name, basename, color=color)
+    docx_path = export_docx(markdown, company_name, basename, color=color)
+    logger.info("Saved %s and %s", pdf_path.name, docx_path.name)
+    return str(pdf_path), str(docx_path)
+
+
+def recolor(brochure, color):
+    """Re-export the last brochure in a new brand colour (no new LLM call)."""
+    if not brochure:
+        return gr.skip(), gr.skip()
+    try:
+        return _export(brochure["markdown"], brochure["company"], color)
+    except Exception as e:
+        logger.exception("Re-export failed")
+        raise gr.Error(f"Couldn't recolour the files: {e}")
+
+
+def generate(company_name, website, audience, tone, fmt, length, language, sections, color,
+             progress=gr.Progress()):
+    """Gradio handler: yields (preview_markdown, pdf_file, docx_file, last_brochure)."""
     company_name = (company_name or "").strip()
     if not company_name:
         raise gr.Error("Please enter a company name.")
+    if not sections:
+        raise gr.Error("Pick at least one section to include.")
     if get_llm_config() is None:  # Fail fast instead of scraping first
-        raise gr.Error("No API key found. Add GROQ_API_KEY (or GOOGLE_API_KEY) to your .env file and restart the app.")
+        raise gr.Error(missing_key_message())
 
     website_ctx = None
     if (website or "").strip():
@@ -68,29 +118,28 @@ def generate(company_name, website, audience, tone, fmt, length, progress=gr.Pro
         length=length,
         audience=audience or "",
         website=website_ctx,
+        language=language or "English",
+        sections=list(sections),
     )
 
     progress(0.3, desc="Writing brochure...")
     markdown = ""
     try:
         for markdown in stream_brochure(request, on_warning=gr.Warning):
-            yield markdown, None, None
+            yield markdown, None, None, None
     except BrochureError as e:
         raise gr.Error(str(e))
 
     progress(0.9, desc="Creating PDF and DOCX...")
     try:
-        basename = make_basename(company_name)
-        pdf_path = export_pdf(markdown, company_name, basename)
-        docx_path = export_docx(markdown, company_name, basename)
+        pdf_path, docx_path = _export(markdown, company_name, color)
     except Exception as e:  # Show the preview even if exporting fails
         logger.exception("Export failed")
         gr.Warning(f"Brochure created, but exporting failed: {e}")
-        yield markdown, None, None
+        yield markdown, None, None, None
         return
 
-    logger.info("Saved %s and %s", pdf_path.name, docx_path.name)
-    yield markdown, str(pdf_path), str(docx_path)
+    yield markdown, pdf_path, docx_path, {"markdown": markdown, "company": company_name}
 
 
 def build_ui() -> gr.Blocks:
@@ -98,14 +147,18 @@ def build_ui() -> gr.Blocks:
     provider_note = (
         f"Powered by **{config.provider}** (`{config.model}`)."
         if config
-        else "⚠️ **No API key found.** Add `GROQ_API_KEY` to your `.env` file."
+        else f"⚠️ {missing_key_message()}"
+    )
+    demo_note = (
+        "\n\n*Free public demo: the AI has a per-minute limit, so if it's busy, wait a minute "
+        "and try again.*" if ON_SPACES else ""
     )
 
     with gr.Blocks(title="AI Brochure Generator") as demo:
         gr.Markdown(
             "# 🏢 AI Company Brochure Generator\n"
             "Turn any company's website into a polished brochure, ready to download "
-            f"as PDF or Word. {provider_note}"
+            f"as PDF or Word. {provider_note}{demo_note}"
         )
 
         with gr.Row():
@@ -119,19 +172,19 @@ def build_ui() -> gr.Blocks:
                     label="Target audience (optional)",
                     placeholder="e.g. investors, job seekers, enterprise clients",
                 )
+                with gr.Row():
+                    language = gr.Dropdown(LANGUAGES, value="English", label="Language", scale=2)
+                    color = gr.ColorPicker(
+                        value=DEFAULT_COLOR, label="Brand colour", scale=1,
+                        info="Title banner and headings",
+                    )
                 tone = gr.Radio(list(TONES), value="Professional", label="Tone")
                 fmt = gr.Radio(list(FORMATS), value="Mixed", label="Format")
                 length = gr.Radio(list(LENGTHS), value="Standard", label="Length")
-                generate_btn = gr.Button("Generate Brochure ✨", variant="primary")
-
-                gr.Examples(
-                    examples=[
-                        ["Hugging Face", "https://huggingface.co", "developers and AI teams"],
-                        ["Groq", "https://groq.com", "enterprise clients"],
-                        ["Chai Point", "", "young professionals"],
-                    ],
-                    inputs=[company_name, website, audience],
+                sections = gr.CheckboxGroup(
+                    list(SECTIONS), value=DEFAULT_SECTIONS, label="Sections to include",
                 )
+                generate_btn = gr.Button("Generate Brochure ✨", variant="primary")
 
             with gr.Column(scale=3):
                 preview = gr.Markdown(
@@ -142,11 +195,19 @@ def build_ui() -> gr.Blocks:
                 with gr.Row():
                     pdf_file = gr.File(label="Download PDF")
                     docx_file = gr.File(label="Download DOCX")
+                gr.Markdown("Changing the brand colour after generating re-colours the files instantly.")
 
-        inputs = [company_name, website, audience, tone, fmt, length]
-        outputs = [preview, pdf_file, docx_file]
-        generate_btn.click(generate, inputs=inputs, outputs=outputs)
-        company_name.submit(generate, inputs=inputs, outputs=outputs)
+        inputs = [company_name, website, audience, tone, fmt, length, language, sections, color]
+        gr.Examples(examples=EXAMPLES, inputs=inputs, example_labels=EXAMPLE_LABELS,
+                    label="Examples (click one, then Generate)")
+
+        last_brochure = gr.State(None)
+        outputs = [preview, pdf_file, docx_file, last_brochure]
+        gr.on([generate_btn.click, company_name.submit], generate, inputs=inputs, outputs=outputs,
+              trigger_mode="once")
+        # "change" (not "input") so typed hex codes and example clicks also recolour
+        color.change(recolor, inputs=[last_brochure, color], outputs=[pdf_file, docx_file],
+                     trigger_mode="always_last", show_progress="minimal")
 
     return demo
 
@@ -154,18 +215,17 @@ def build_ui() -> gr.Blocks:
 def main():
     parser = argparse.ArgumentParser(description="AI Company Brochure Generator")
     parser.add_argument("--port", type=int, default=None, help="Port to run on (default: auto)")
-    parser.add_argument("--no-share", action="store_true", help="Don't create a public share link")
+    parser.add_argument("--share", action="store_true",
+                        help="Also create a temporary public link (anyone with it can use your API key's quota)")
     parser.add_argument("--no-browser", action="store_true", help="Don't open a browser tab")
     args = parser.parse_args()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    build_ui().launch(
-        share=not args.no_share,
-        server_port=args.port,
-        inbrowser=not args.no_browser,
-        theme=gr.themes.Soft(),
-        allowed_paths=[str(OUTPUT_DIR)],
-    )
+    options = {"theme": gr.themes.Soft(), "allowed_paths": [str(OUTPUT_DIR)]}
+    if ON_SPACES:  # Hugging Face picks the host and port and serves the public URL itself
+        build_ui().launch(**options)
+    else:
+        build_ui().launch(share=args.share, server_port=args.port, inbrowser=not args.no_browser, **options)
 
 
 if __name__ == "__main__":

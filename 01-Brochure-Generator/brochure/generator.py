@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI, OpenAIError
 
-from .config import LLMConfig, available_providers, get_llm_config
+from .config import LLMConfig, available_providers, get_llm_config, missing_key_message
 from .scraper import WebsiteContext
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,26 @@ LENGTHS = {
     "Standard": "Aim for roughly 400-600 words.",
     "Detailed": "Aim for roughly 700-1000 words.",
 }
+# Languages the PDF exporter can draw on macOS, Windows and Linux (with Noto fonts)
+LANGUAGES = [
+    "English", "Hindi", "Marathi", "Spanish", "French", "German",
+    "Portuguese", "Italian", "Japanese", "Chinese (Simplified)", "Korean",
+]
+# Section name -> extra guidance for the model. Order here is the order in the brochure.
+SECTIONS = {
+    "About Us": "",
+    "Mission & Vision": "",
+    "Our Services & Products": "",
+    "Technologies & Expertise": "",
+    "Why Choose Us": "",
+    "Our Culture": "(only if the source material says something about culture or careers)",
+    "FAQ": "(3-4 questions a customer would ask, with short answers)",
+    "Get in Touch": "",
+}
+DEFAULT_SECTIONS = [
+    "About Us", "Our Services & Products", "Technologies & Expertise",
+    "Why Choose Us", "Our Culture", "Get in Touch",
+]
 
 
 class BrochureError(Exception):
@@ -42,6 +62,8 @@ class BrochureRequest:
     length: str = "Standard"
     audience: str = ""
     website: WebsiteContext | None = None
+    language: str = "English"
+    sections: list[str] | None = None  # names from SECTIONS; None = DEFAULT_SECTIONS
     provider: str | None = None  # "Groq" / "Gemini"; None = first one with a key
     model: str | None = None     # None = the provider's default model
 
@@ -51,18 +73,13 @@ SYSTEM_PROMPT = """You are a world-class corporate copywriter who writes company
 Write the brochure in clean Markdown with exactly this structure:
 # <Catchy headline that includes the company name>
 A one-line tagline in *italics*.
-## About Us
-## Our Services & Products
-## Technologies & Expertise
-## Why Choose Us
-## Our Culture   (only if the source material says something about culture or careers)
-## Get in Touch
+{sections}
 
 Style:
 - Write in {tone}.
 - {format}
 - {length}
-{audience}
+{audience}{language}
 Accuracy rules (very important):
 - Use only facts found in the website content. If there is no website content,
   write general but plausible copy based on the company name and never state
@@ -76,13 +93,30 @@ Accuracy rules (very important):
 """
 
 
+def _section_lines(names: list[str] | None) -> str:
+    chosen = [name for name in SECTIONS if name in (names or DEFAULT_SECTIONS)]
+    return "\n".join(f"## {name}   {SECTIONS[name]}".rstrip() for name in chosen or DEFAULT_SECTIONS)
+
+
+def _language_rule(language: str) -> str:
+    if not language or language == "English":
+        return "- Write in English.\n"
+    return (
+        f"- Write the entire brochure in {language}, including the headline, tagline and "
+        "section headings (translate the headings above). Keep company names, product "
+        "names, emails and URLs exactly as they are.\n"
+    )
+
+
 def _build_messages(req: BrochureRequest) -> list[dict]:
     audience = f"- The target audience is: {req.audience.strip()}.\n" if req.audience.strip() else ""
     system = SYSTEM_PROMPT.format(
+        sections=_section_lines(req.sections),
         tone=TONES.get(req.tone, TONES["Professional"]),
         format=FORMATS.get(req.format, FORMATS["Mixed"]),
         length=LENGTHS.get(req.length, LENGTHS["Standard"]),
         audience=audience,
+        language=_language_rule(req.language),
     )
     source = req.website.as_prompt() if req.website else "No website was provided."
     user = (
@@ -152,10 +186,6 @@ def _friendly_error(e: Exception, config: LLMConfig, model: str) -> str:
     return f"{p} error: {e}"
 
 
-def _missing_key_message() -> str:
-    return "No API key found. Add GROQ_API_KEY (or GOOGLE_API_KEY) to your .env file and restart the app."
-
-
 # --------------------------------------------------------------------------
 # Streaming
 # --------------------------------------------------------------------------
@@ -174,7 +204,7 @@ def stream_brochure(
     if config is None:
         if req.provider and available_providers():
             raise BrochureError(f"No API key set for {req.provider}.")
-        raise BrochureError(_missing_key_message())
+        raise BrochureError(missing_key_message())
     model = (req.model or "").strip() or config.model
 
     client = OpenAI(base_url=config.base_url, api_key=config.api_key, timeout=60)

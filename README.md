@@ -5,7 +5,7 @@ LLM APIs, prompt engineering, web scraping, streaming chat UIs and document gene
 
 | # | Project | What it does | Tech |
 |---|---------|--------------|------|
-| 01 | [AI Company Brochure Generator](01-Brochure-Generator) | Reads a company's website and writes a polished brochure, exported as styled PDF and DOCX | Gradio, Groq / Gemini, BeautifulSoup, fpdf2, python-docx |
+| 01 | [AI Company Brochure Generator](01-Brochure-Generator) | Reads a company's website and writes a polished brochure in 11 languages, with your choice of sections and brand colour, exported as styled PDF and DOCX | Gradio, Groq / Gemini, BeautifulSoup, fpdf2, python-docx |
 | 02 | [AI Movie Chatbot](02-AI-Movie-Chatbot) | Chat app that answers anything about any movie: director, cast, budget, release, hit or flop | Gradio ChatInterface, Groq / Gemini, streaming |
 
 ## 🚀 Running a project
@@ -16,7 +16,7 @@ Each project has its own README. In general:
 cd 01-Brochure-Generator          # or 02-AI-Movie-Chatbot
 pip install -r requirements.txt
 cp .env.example .env              # add your GROQ_API_KEY
-python app.py                     # prints a local URL and a public share link
+python app.py                     # opens the app in your browser
 ```
 
 Get a free Groq API key at [console.groq.com/keys](https://console.groq.com/keys).
