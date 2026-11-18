@@ -7,8 +7,9 @@ services:
     plan: free
     region: singapore
     rootDir: 01-Brochure-Generator
-    dockerfilePath: ./01-Brochure-Generator/Dockerfile
-    dockerContext: ./01-Brochure-Generator
+    # With rootDir set, Render resolves these two paths inside rootDir
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     healthCheckPath: /
     envVars:
       - key: GROQ_API_KEY
