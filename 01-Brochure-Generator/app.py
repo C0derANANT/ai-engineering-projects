@@ -28,7 +28,7 @@ from brochure import (
     normalize_url,
     stream_brochure,
 )
-from brochure.config import ON_SPACES, OUTPUT_DIR, get_llm_config, missing_key_message
+from brochure.config import HOSTED, OUTPUT_DIR, get_llm_config, missing_key_message
 from brochure.exporters import DEFAULT_COLOR
 from brochure.generator import DEFAULT_SECTIONS, FORMATS, LANGUAGES, LENGTHS, SECTIONS, TONES
 
@@ -151,7 +151,7 @@ def build_ui() -> gr.Blocks:
     )
     demo_note = (
         "\n\n*Free public demo: the AI has a per-minute limit, so if it's busy, wait a minute "
-        "and try again.*" if ON_SPACES else ""
+        "and try again. After a quiet spell the site needs about a minute to wake up.*" if HOSTED else ""
     )
 
     with gr.Blocks(title="AI Brochure Generator") as demo:
@@ -222,7 +222,7 @@ def main():
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     options = {"theme": gr.themes.Soft(), "allowed_paths": [str(OUTPUT_DIR)]}
-    if ON_SPACES:  # Hugging Face picks the host and port and serves the public URL itself
+    if HOSTED:  # Host and port come from GRADIO_SERVER_NAME / GRADIO_SERVER_PORT (set in the Dockerfile)
         build_ui().launch(**options)
     else:
         build_ui().launch(share=args.share, server_port=args.port, inbrowser=not args.no_browser, **options)

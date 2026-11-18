@@ -43,9 +43,7 @@ Built as part of the Incapp AI Engineer course.
 │   ├── scraper.py            # Website scraping
 │   ├── generator.py          # Prompt building + LLM streaming
 │   └── exporters.py          # Markdown → PDF / DOCX, brand colours, fonts
-├── deploy_space.py           # Uploads the app to a Hugging Face Space
-├── space_card.md             # The Space's settings + description (becomes its README)
-├── packages.txt              # Linux fonts the Space installs (Hindi, CJK)
+├── Dockerfile                # Container for the public demo (with Hindi + CJK fonts)
 ├── outputs/                  # Generated brochures (git-ignored)
 ├── legacy/                   # Original v1 notebook
 ├── requirements.txt
@@ -77,22 +75,22 @@ python app.py --port 7860    # fixed port
 > Your key stays in `.env`, which git ignores. A `--share` link doesn't reveal the key,
 > but anyone with the link uses your quota, so only share it with people you trust.
 
-## ☁️ Deploy Your Own Copy (Hugging Face Spaces)
+## ☁️ Deploy Your Own Copy (Render, free)
 
-A Space gives you a free public URL where visitors don't need a key or any setup.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/C0derANANT/ai-engineering-projects)
 
-```bash
-hf auth login                                          # once; token with "write" access
-python deploy_space.py your-username/ai-brochure-generator
-```
+This gives you a free public URL where visitors don't need a key or any setup.
 
-Then open the Space → **Settings → Variables and secrets → New secret**, name it
-`GROQ_API_KEY` and paste your Groq key. Hugging Face keeps the secret on its servers:
-it is never in the code and visitors can't see it. On Groq's free plan the worst case
-is hitting the rate limit (the app tells visitors to wait a minute); there's no bill.
+1. Fork this repo, sign in to [Render](https://render.com) with GitHub (no card needed).
+2. **New → Blueprint**, pick your fork. Render reads [`render.yaml`](../render.yaml) and builds the
+   [`Dockerfile`](Dockerfile).
+3. When asked for `GROQ_API_KEY`, paste your Groq key. Render keeps it on its servers:
+   it is never in the code and visitors can't see it.
 
-The deploy script uploads only the app's own files, never `.env` or `outputs/`.
-Run it again after every change.
+Every push to `main` redeploys automatically. Free plan notes: the site sleeps after
+15 minutes without visitors and takes about a minute to wake; on Groq's free plan the
+worst case is hitting the rate limit (the app tells visitors to wait a minute), with no bill.
+The Docker image contains only the app's own files, never `.env` or `outputs/`.
 
 ## ⚙️ Configuration
 
@@ -108,14 +106,14 @@ Run it again after every change.
 
 **Fonts for non-English PDFs:** on macOS every listed language works out of the box.
 On Windows the app uses the built-in Nirmala UI, Microsoft YaHei, Yu Gothic and Malgun Gothic fonts.
-On Linux, install `fonts-noto-core` and `fonts-noto-cjk` (the Space does this from `packages.txt`).
+On Linux, install `fonts-noto-core` and `fonts-noto-cjk` (the Dockerfile already does).
 The Word file never needs extra fonts.
 
 ## 📝 Changelog
 
 **v3:** bug fixes and new options
 - New: output language, section picker, brand colour picker, richer examples
-- Ready for Hugging Face Spaces (`deploy_space.py`); the public link is now opt-in with `--share`
+- Free public hosting on Render (`Dockerfile` + `render.yaml`); the public link is now opt-in with `--share`
 - Hindi, Chinese, Japanese and Korean text no longer disappears from the PDF; Arabic letters join correctly
 - Huge pages no longer freeze the app (downloads capped at 2 MB / 25 s; a 48 MB page went from 69 s and 1.7 GB of RAM to under 3 s)
 - The scraper refuses private network addresses, skips non-HTML links (PDFs, images), keeps contact details, and prefers the About page

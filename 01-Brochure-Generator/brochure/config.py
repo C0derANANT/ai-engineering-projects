@@ -8,8 +8,9 @@ from dotenv import dotenv_values, find_dotenv
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = PROJECT_DIR / "outputs"
-# Hugging Face sets SPACE_ID when the app runs as a Space
-ON_SPACES = bool(os.getenv("SPACE_ID"))
+# True when the app runs as a public website: in the Docker image (used on Render)
+# or as a Hugging Face Space, which sets SPACE_ID
+HOSTED = os.getenv("BROCHURE_HOSTED") == "1" or bool(os.getenv("SPACE_ID"))
 
 
 def _load_env() -> None:
@@ -69,9 +70,9 @@ def available_providers() -> dict[str, LLMConfig]:
 
 
 def missing_key_message() -> str:
-    if ON_SPACES:
-        return ("This demo isn't set up yet: the Space owner needs to add GROQ_API_KEY "
-                "under Settings → Variables and secrets.")
+    if HOSTED:
+        return ("This demo isn't set up yet: the site owner needs to add GROQ_API_KEY to the "
+                "server's environment settings (on Render: the service's Environment tab).")
     return "No API key found. Add GROQ_API_KEY (or GOOGLE_API_KEY) to your .env file and restart the app."
 
 

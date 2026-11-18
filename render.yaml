@@ -1,0 +1,15 @@
+# Render Blueprint: hosts the 01-Brochure-Generator demo on Render's free plan.
+# Render -> New -> Blueprint -> pick this repo, then paste your Groq key when asked.
+services:
+  - type: web
+    name: ai-brochure-generator
+    runtime: docker
+    plan: free
+    region: singapore
+    rootDir: 01-Brochure-Generator
+    dockerfilePath: ./01-Brochure-Generator/Dockerfile
+    dockerContext: ./01-Brochure-Generator
+    healthCheckPath: /
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false  # you type the value in Render's dashboard; it never goes in this repo
