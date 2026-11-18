@@ -37,7 +37,7 @@ Built as part of the Incapp AI Engineer course.
 - **Clickable links:** websites, emails and phone links open with one click in both the PDF and the Word file, including plain addresses like `huggingface.co` or `press@acme.com` in the text. Only web, email and phone links are made clickable, so an AI-written `javascript:` link stays plain text
 - **Clear errors:** plain-English messages for a wrong API key, rate limits, unknown models, blocked or JavaScript-only websites
 - **Multiple LLM providers:** Groq by default, Gemini as a fallback (both via the OpenAI-compatible API)
-- **Tested:** pytest tests for URL checks, the private-network block, page and link picking, logos, links, placeholders and the PDF/DOCX exports, run by GitHub Actions on every push
+- **Tested:** pytest tests for URL checks, the private-network block, page and link picking, logos, links, placeholders, the AI prompt and the PDF/DOCX exports, run by GitHub Actions on every push
 
 ## 🧰 Tech Stack
 
