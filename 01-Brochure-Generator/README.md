@@ -6,7 +6,7 @@ language, tone and sections you choose, shows a live preview, and exports it as
 a styled **PDF** and **Word (DOCX)** file in your brand colour.
 
 **🌐 Live demo: [ai-brochure-generator-af0t.onrender.com](https://ai-brochure-generator-af0t.onrender.com)**
-(free hosting: if nobody has used it for 15 minutes, the first visit takes about a minute to wake up)
+(free hosting, kept awake by a [GitHub Action](../.github/workflows/keep-awake.yml) that visits it every 10 minutes, so it normally opens straight away)
 
 Built as part of the Incapp AI Engineer course.
 
@@ -105,8 +105,11 @@ This gives you a free public URL where visitors don't need a key or any setup.
    it is never in the code and visitors can't see it.
 
 Every push to `main` redeploys automatically. Free plan notes: the site sleeps after
-15 minutes without visitors and takes about a minute to wake; on Groq's free plan the
-worst case is hitting the rate limit (the app tells visitors to wait a minute), with no bill.
+15 minutes without visitors and then takes 30-60 seconds to wake. The
+[`keep-awake`](../.github/workflows/keep-awake.yml) workflow stops that by visiting it every
+10 minutes (change `DEMO_URL` in it to your own Render URL). Running all month uses about
+744 of Render's 750 free hours, so keep it to one always-on free service. On Groq's free plan
+the worst case is hitting the rate limit (the app tells visitors to wait a minute), with no bill.
 The Docker image contains only the app's own files, never `.env` or `outputs/`.
 
 ## ⚙️ Configuration
