@@ -118,13 +118,18 @@ anywhere in a few seconds. GitHub Actions runs the same command on every push.
 
 This gives you a free public URL where visitors don't need a key or any setup.
 
-1. Fork this repo, sign in to [Render](https://render.com) with GitHub (no card needed).
+1. Fork this repo, sign in to [Render](https://render.com) with GitHub (no card needed), and
+   install [Render's GitHub App](https://github.com/apps/render) on your fork. Without the app,
+   Render never hears about your pushes, so nothing deploys after the first build.
 2. **New → Blueprint**, pick your fork. Render reads [`render.yaml`](../render.yaml) and builds the
    [`Dockerfile`](Dockerfile).
 3. When asked for `GROQ_API_KEY`, paste your Groq key. Render keeps it on its servers:
    it is never in the code and visitors can't see it.
 
-Every push to `main` redeploys automatically. Free plan notes: the site sleeps after
+Every push to `main` redeploys automatically once its GitHub Actions tests pass
+(`autoDeployTrigger: checksPass` in `render.yaml`), so a commit that breaks the tests never
+goes live. To deploy by hand, use **Manual Deploy → Deploy latest commit** on the service in
+Render. Free plan notes: the site sleeps after
 15 minutes without visitors and then takes 30-60 seconds to wake. The
 [`keep-awake`](../.github/workflows/keep-awake.yml) workflow stops that by visiting it every
 10 minutes (change `DEMO_URL` in it to your own Render URL). Running all month uses about

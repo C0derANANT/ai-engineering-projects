@@ -11,6 +11,9 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /
+    # Deploy a push only after its GitHub Actions checks pass (brochure-tests.yml),
+    # so a commit that breaks the tests never reaches the live demo
+    autoDeployTrigger: checksPass
     envVars:
       - key: GROQ_API_KEY
         sync: false  # you type the value in Render's dashboard; it never goes in this repo
