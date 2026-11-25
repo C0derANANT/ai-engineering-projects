@@ -1,0 +1,3 @@
+# Built by ingest.py / the app on first run; rebuilt automatically when knowledge-base/ changes
+vector_db/
+.pytest_cache/

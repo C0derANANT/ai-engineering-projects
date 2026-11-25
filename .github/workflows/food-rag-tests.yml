@@ -1,0 +1,35 @@
+# Runs the Food Delivery RAG tests whenever that project changes.
+# The tests use fake embeddings, a fake LLM and a fake Whisper client, so they need no API keys.
+name: Food Delivery RAG tests
+
+on:
+  push:
+    paths:
+      - "03-Food-Delivery-RAG/**"
+      - ".github/workflows/food-rag-tests.yml"
+  workflow_dispatch:  # adds a "Run workflow" button in the Actions tab
+
+permissions:
+  contents: read  # only needs to read the code
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: 03-Food-Delivery-RAG
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"  # same as the Hugging Face Space
+          cache: pip
+          cache-dependency-path: 03-Food-Delivery-RAG/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest==9.2.0
+
+      - name: Run tests
+        run: pytest -v

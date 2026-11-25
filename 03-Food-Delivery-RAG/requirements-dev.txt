@@ -1,0 +1,6 @@
+-r requirements.txt
+pytest==9.2.0
+# Only for running the notebooks locally (Colab already has these)
+nbclient
+nbformat
+ipykernel
