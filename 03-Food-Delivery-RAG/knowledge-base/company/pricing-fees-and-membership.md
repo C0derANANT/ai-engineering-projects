@@ -15,11 +15,11 @@ Example order from a restaurant 5.2 km away, placed at 8:15 pm on a rainy evenin
 | Delivery fee | ₹37.60 | ₹20 for the first 3 km + ₹8 × 2.2 km. |
 | High-demand (rain) fee | ₹20.00 | Applied during heavy rain. |
 | Platform fee | ₹6.00 | Flat, per order. |
-| GST on food and packaging (5%) | ₹25.50 | 5% of (₹480 + ₹30). |
-| GST on fees (18%) | ₹11.45 | 18% of (₹37.60 + ₹20 + ₹6). |
 | Coupon `TASTY60` | −₹60.00 | Restaurant-funded coupon. |
+| GST on food and packaging (5%) | ₹22.50 | 5% of (₹480 + ₹30 − ₹60 coupon). |
+| GST on fees (18%) | ₹11.45 | 18% of (₹37.60 + ₹20 + ₹6). |
 | Delivery partner tip | ₹20.00 | Optional; 100% goes to the delivery partner. |
-| **To pay** | **₹570.55** | |
+| **To pay** | **₹567.55** | |
 
 The bill breakdown is always visible on the checkout screen (tap "Bill details") and in Orders > select order > "View bill".
 
@@ -71,7 +71,7 @@ The delivery fee depends on the road distance between the restaurant and the del
 
 ## 8. Taxes (GST)
 
-- **5% GST** on food items and packaging. CraveCart collects and pays this as the e-commerce operator under Section 9(5) of the CGST Act.
+- **5% GST** on food items and packaging, calculated **after** coupon and restaurant discounts. CraveCart collects and pays this as the e-commerce operator under Section 9(5) of the CGST Act.
 - **18% GST** on the delivery fee, platform fee, small cart fee, high-demand fee and late-night fee.
 - Tips and CraveCart Plus discounts are not taxed. Plus membership fees carry 18% GST, included in the price shown.
 - A GST invoice is available in Orders > select order > "Download invoice". Business customers can add their GSTIN in Profile > Business details **before** placing the order. A GSTIN cannot be added to an invoice after the order is placed.

@@ -1,39 +1,162 @@
-# 🍛 Food Delivery RAG
+# 🍛 Crave Assist: RAG help assistant for CraveCart
 
-A RAG (Retrieval-Augmented Generation) application for a food delivery company like Zomato, built for the Incapp AI Engineer project. It answers customer and employee questions from the company's own documents: FAQs, ordering, refunds, support procedures and HR policies.
+A RAG (Retrieval-Augmented Generation) support assistant for **CraveCart**, a fictional Zomato-style food delivery company. Built for the Incapp AI Engineer project, starting from the class `RAG_APP.ipynb` and adding the upgrades below.
 
-> **Status:** step 1 of 3. The knowledge base is ready. The vector database (RAG_DB) and the API and app come next.
+![Crave Assist demo: a cancellation question, a Hinglish refund question, and the Sources panel](docs/demo.gif)
 
-## The knowledge base
+| What it does | How |
+|---|---|
+| Answers from 18 policy, FAQ and HR documents | Chroma vector DB built from heading-aware chunks (BGE embeddings) |
+| Cites the exact section behind every answer | `[n]` markers in the answer, plus a Sources panel with the matching passages |
+| Gets refund and cancellation **maths exactly right** | The LLM calls Python tools on 11 demo orders (`#1042`–`#1052`) instead of doing money maths itself |
+| Understands follow-up questions | Each question plus the chat history is rewritten into one standalone search query |
+| Speaks English, हिंदी and Hinglish | Replies in the language and script the user typed in |
+| Takes voice questions | Groq Whisper (`whisper-large-v3-turbo`) transcribes the mic recording |
+| Stays up when the AI service is busy | Groq first; a Gemini backup takes over automatically on rate limits |
 
-The company, **CraveCart**, is fictional. Its knowledge base has 18 Markdown files (about 28,500 words) in [`knowledge-base/`](knowledge-base). Each subfolder becomes the `doc_type` metadata when the files are loaded.
+## How it works
 
-| Folder (`doc_type`) | Files | What's covered |
-|---|---|---|
-| `company` | 2 | Company overview, cities, history; every fee on the bill; CraveCart Plus membership |
-| `customer-faqs` | 3 | Orders and delivery; payments, refunds and offers; account, app and general |
-| `ordering` | 5 | Placing, modifying and cancelling orders; delivery times and ETAs; live tracking |
-| `policies` | 2 | Refund policy and cancellation policy, with worked examples |
-| `support` | 2 | Customer support procedures (SLAs, refund limits, scenarios); technical support (error codes, incidents) |
-| `hr-policies` | 4 | Leave, code of conduct, onboarding, benefits |
+```mermaid
+flowchart LR
+    Q["Your question<br/>text, Hindi, Hinglish or 🎙️ voice"] --> STT{"Voice?"}
+    STT -- yes --> W["Groq Whisper<br/>speech → text"]
+    STT -- no --> R
+    W --> R["Rewrite (gpt-oss-20b)<br/>chat history → standalone<br/>English query + language"]
+    R --> S["Search Chroma<br/>top 5 passages<br/>(BGE embeddings)"]
+    S --> A["Answer (gpt-oss-120b)<br/>streams, cites [1] [2]…"]
+    A <-->|"tool calls"| T["Exact calculators<br/>cancellation · refund · bill · order lookup"]
+    T --> D[("11 demo orders<br/>data/sample_orders.json")]
+    A --> UI["Gradio chat<br/>+ Sources panel"]
+    A -. "rate limited?" .-> G["Gemini backup"]
+    KB[("knowledge-base/<br/>18 Markdown files")] --> IDX["ingest.py<br/>heading-aware chunks"] --> V[("vector_db/<br/>Chroma")]
+    V --> S
+```
 
-The documents share one set of facts (fees, time windows, refund rules), so the RAG never gets conflicting answers from different files. They include worked examples and edge cases, so retrieval quality can be tested on hard questions.
+## Project layout
 
-`knowledge-base.zip` contains the same folder, ready to upload to Google Drive for Colab.
+```
+03-Food-Delivery-RAG/
+├── app.py                  # Gradio app (chat, Sources panel, demo orders, voice)
+├── ingest.py               # builds the RAG_DB (python ingest.py --help)
+├── rag/
+│   ├── config.py           # settings, .env handling
+│   ├── knowledge_base.py   # loading, heading-aware chunking, Chroma, auto-refresh
+│   ├── assistant.py        # rewrite → search → answer, streaming, citations, history
+│   ├── calculators.py      # exact fee, cancellation and refund maths (Decimal)
+│   ├── orders.py           # demo order loading and validation
+│   ├── tools.py            # the calculators exposed to the LLM as tools
+│   ├── llm.py              # Groq + Gemini models, friendly error messages
+│   ├── voice.py            # Whisper transcription and silence detection
+│   ├── service.py          # wires it all together
+│   └── ui.py               # examples, Sources panel formatting
+├── knowledge-base/         # 18 Markdown documents, one folder per doc_type
+├── data/sample_orders.json # 11 demo orders, each showing a different policy case
+├── notebooks/
+│   ├── RAG_DB.ipynb        # build the vector DB step by step (runs in Colab)
+│   └── RAG_APP.ipynb       # the whole assistant in a notebook (runs in Colab)
+├── tests/                  # 105 tests, no internet or API keys needed
+├── deploy/                 # Hugging Face Space files and deploy script
+└── docs/                   # demo GIF and screenshot
+```
 
-## Using it with the RAG_DB notebook
+## Run it locally
 
-The class `RAG_DB.ipynb` loads `knowledge-base/<folder>/*.md`, splits the text into 1000-character chunks with 200 overlap, embeds them with `all-MiniLM-L6-v2`, and stores them in Chroma. At those settings, this knowledge base makes about 210 chunks.
+Needs Python 3.12 or newer. The first run downloads the embedding model (about 130 MB).
 
-1. Upload `knowledge-base.zip` to Google Drive and unzip it into `MyDrive/ai/` so the path is `MyDrive/ai/knowledge-base/`.
-2. Run `RAG_DB.ipynb`. No code changes are needed.
+```bash
+cd 03-Food-Delivery-RAG
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env          # then add GROQ_API_KEY (and optionally GOOGLE_API_KEY)
+python app.py                 # builds the vector DB on first run, then opens http://localhost:7860
+```
 
-Keep only folders directly inside `knowledge-base/`. A loose file at that level breaks the folder loop in the notebook.
+Without any API key the app still runs: it shows the most relevant passages and says live answers are off. Adding a key to `.env` turns them on without a restart.
 
-## Questions to test retrieval with
+Get a free Groq key at [console.groq.com/keys](https://console.groq.com/keys).
 
-- "How much is the cancellation fee if the restaurant has already accepted my order?"
-- "My Mutton Korma was missing and I used a coupon. How much refund do I get?"
-- "What does error CC-PAY-302 mean?"
-- "How many days of earned leave do I get, and can I carry them forward?"
-- "Are delivery partners covered by employee health insurance?"
+### Useful commands
+
+```bash
+python ingest.py --stats                       # chunks per document
+python ingest.py --force                       # rebuild the vector DB
+python ingest.py --query "late night fee"      # see what the search returns
+pytest                                         # run the 105 tests
+```
+
+The vector DB rebuilds itself whenever a document, the chunk settings or the embedding model changes.
+
+## Try these
+
+- `I want to cancel order 1042. How much will I get back?`: stage C, 50% fee, **₹299.79** back
+- `Order 1045 mein Mutton Korma nahi aaya, kitna refund milega?`: Hinglish, **₹283.50**, with the breakdown
+- `मेरा ऑर्डर 1044 बहुत लेट है, क्या मुझे कुछ मिलेगा?`: Hindi, Plus member, On-Time Promise
+- `How much would a ₹450 order from 6.5 km away cost with CraveCart Plus?`: `estimate_bill` tool
+- `What does error CC-PAY-302 mean?`: exact-term retrieval
+- `What's the capital of France?`: politely refused, since it's off-topic
+
+| Order | Scenario |
+|---|---|
+| #1042 | Accepted, not cooking: 50% fee, tip refunded |
+| #1043 | Being prepared: 100% fee |
+| #1044 | Plus member, 35 min late: free cancellation, On-Time Promise, wallet refund first |
+| #1045 | Delivered 25 min ago, ₹120 coupon: item refund |
+| #1046 | Delivered 5 hours ago: past the 3-hour reporting window |
+| #1047 | Cash on Delivery, being prepared: fee becomes outstanding dues |
+| #1048 | Placed 30 seconds ago: free (grace period) |
+| #1049 | Scheduled 3 hours ahead: free cancellation |
+| #1050 | Food ready 25 min, no delivery partner: free cancellation |
+| #1051 | Restaurant hasn't accepted, partly paid with CraveCart Money |
+| #1052 | Under ₹149 and late at night: small cart and late-night fees |
+
+## Edge cases handled
+
+| Situation | What happens |
+|---|---|
+| Follow-up like "what if it was already cooking?" | Rewritten into a full question using the chat history |
+| Hindi, Hinglish or mixed input | Searched in English; answered in the user's own script |
+| Voice file that is silent or just noise | Whisper's stock phrases ("Thank you", "Thanks for watching") and echoed hints are rejected with a clear message |
+| Empty, too-long or non-audio uploads | Friendly messages; nothing crashes |
+| Unknown order number | Lists the demo order IDs that do exist |
+| Item name typo ("mutton kurma") | Fuzzy match; if still unclear, lists the real items in the order |
+| Asking for more units than ordered | Refund capped at the quantity ordered, with a note |
+| Report after the 3-hour window | Refused with the reason; food-safety reports use a 24-hour window |
+| Distance above 10 km | Refused: outside the delivery area |
+| Model asks for a tool with bad arguments | Error returned to the model, which then answers normally |
+| Endless tool-call loop | Stops after 4 rounds |
+| Groq rate limit (429) | Gemini answers instead, if a Gemini key is set |
+| API key missing, wrong or out of quota | Clear message; the app doesn't crash |
+| Gemini tool-call history rejected | A placeholder thought signature is sent, as Google documents |
+| Changed knowledge-base documents | The vector DB rebuilds automatically on the next start |
+| Loose or empty files in `knowledge-base/` | Skipped with a warning (the class notebook's loader would crash on a loose file) |
+
+## Tests and continuous integration
+
+```bash
+pytest
+```
+
+The 105 tests use fake embeddings, a scripted fake LLM and a fake Whisper client, so they run offline with no keys. They check the calculators against every worked example in the policy documents, the citation and history logic, voice silence detection, and the vector DB refresh. GitHub Actions runs them on every push that touches this folder (`.github/workflows/food-rag-tests.yml`).
+
+## Notebooks (Google Colab)
+
+- **`notebooks/RAG_DB.ipynb`** builds the vector DB step by step. It's the Colab version of the class notebook.
+- **`notebooks/RAG_APP.ipynb`** runs the whole assistant in a notebook and launches the Gradio app with a public link. Add `GROQ_API_KEY` under Colab's 🔑 Secrets first.
+
+## Deploy
+
+The deploy script and Space files are in [`deploy/`](deploy). It uploads only an allowlist of files (never `.env` or `.venv`).
+
+**Status: not deployed yet.** Hugging Face returned `402 Payment Required` when creating the Gradio Space, because hosting Gradio Spaces on free CPU hardware needs a PRO subscription. Options:
+
+1. Subscribe to PRO at [huggingface.co/pro](https://huggingface.co/pro), then run `./deploy/deploy_space.sh` (after `hf auth login`).
+2. Run it free on Colab with `notebooks/RAG_APP.ipynb` (a temporary public link per session).
+3. Host it on another free service. Render's free plan has 512 MB of memory, which is too small for the embedding model, so that isn't an option.
+
+## Stack
+
+LangChain · Chroma · Hugging Face sentence-transformers (BGE) · Groq (`gpt-oss-120b`, `gpt-oss-20b`, Whisper) · Gemini (backup) · Gradio 6 · pytest
+
+---
+
+Built by **Anant Aggarwal** · B.Tech CSE (AI) · CraveCart is a fictional company for a learning project.

@@ -25,7 +25,8 @@ Once a restaurant starts cooking, the food usually can't be resold, and a delive
 Notes:
 
 - The stage is decided at the moment the customer **confirms** the cancellation, not when they open the Help screen.
-- The **platform fee and GST** on fees are kept in stage C and D cancellations. The **delivery fee** is refunded in stage C if no delivery partner has reached the restaurant yet.
+- The **platform fee** (and its 18% GST) and any **small cart fee** (and its GST) are kept in stage C and D cancellations.
+- In stage C, the **delivery fee, high-demand fee and late-night fee** (with their 18% GST) are refunded if no delivery partner has reached the restaurant yet. If a partner is already at the restaurant, they are kept.
 - The **tip** is refunded in stages A, B and C, and in stage D if the order has not been picked up.
 
 ### 3.2 Worked examples
