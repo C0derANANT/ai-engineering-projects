@@ -7,6 +7,7 @@ LLM APIs, prompt engineering, web scraping, streaming chat UIs and document gene
 |---|---------|--------------|------|
 | 01 | [AI Company Brochure Generator](01-Brochure-Generator) | Reads a company's website and writes a polished brochure in 11 languages, with your choice of sections and brand colour, exported as styled PDF and DOCX | Gradio, Groq / Gemini, BeautifulSoup, fpdf2, python-docx |
 | 02 | [AI Movie Chatbot](02-AI-Movie-Chatbot) | Chat app that answers anything about any movie: director, cast, budget, release, hit or flop | Gradio ChatInterface, Groq / Gemini, streaming |
+| 03 | [Food Delivery RAG](03-Food-Delivery-RAG) _(in progress)_ | RAG assistant for a Zomato-style food delivery company, answering from its FAQs, ordering, refund, support and HR documents. The knowledge base is done; the vector DB and app come next | LangChain, Chroma, Hugging Face embeddings, Groq |
 
 ## 🚀 Running a project
 
