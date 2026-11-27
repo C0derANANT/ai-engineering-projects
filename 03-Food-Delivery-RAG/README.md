@@ -2,6 +2,8 @@
 
 A RAG (Retrieval-Augmented Generation) support assistant for **CraveCart**, a fictional Zomato-style food delivery company. Built for the Incapp AI Engineer project, starting from the class `RAG_APP.ipynb` and adding the upgrades below.
 
+**Live demo: [crave-assist.onrender.com](https://crave-assist.onrender.com)** (free plan: the first visit after a quiet spell takes about a minute to wake up).
+
 ![Crave Assist demo: a cancellation question, a Hinglish refund question, and the Sources panel](docs/demo.gif)
 
 | What it does | How |
@@ -150,7 +152,7 @@ Run them in order; each one works in Colab (it clones this repo) or locally.
 
 ## Deploy (Render)
 
-The live demo runs on Render's free plan from the [`render.yaml`](../render.yaml) Blueprint at the repo root (service `crave-assist`, Docker, built from this folder's [`Dockerfile`](Dockerfile)).
+The [live demo](https://crave-assist.onrender.com) runs on Render's free plan from the [`render.yaml`](../render.yaml) Blueprint at the repo root (service `crave-assist`, Docker, built from this folder's [`Dockerfile`](Dockerfile)).
 
 - **Fits in 512 MB:** the BGE embeddings run on ONNX through fastembed instead of PyTorch (~430 MB peak instead of ~1 GB), and the Docker build downloads the model and builds the vector DB, so the live app starts in seconds.
 - **Only tested code goes live:** Render deploys a push only after the GitHub Actions tests pass (`autoDeployTrigger: checksPass`).
