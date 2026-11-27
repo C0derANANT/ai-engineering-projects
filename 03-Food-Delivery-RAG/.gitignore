@@ -1,3 +1,6 @@
 # Built by ingest.py / the app on first run; rebuilt automatically when knowledge-base/ changes
 vector_db/
 .pytest_cache/
+# fastembed model download (about 67 MB) and the class-baseline notebook's own DB
+.cache/
+class_baseline_vector_db/

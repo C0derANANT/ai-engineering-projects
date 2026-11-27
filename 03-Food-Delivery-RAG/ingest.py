@@ -1,10 +1,11 @@
-"""Build the RAG_DB: turn knowledge-base/ into a Chroma vector database.
+"""Build the vector DB: turn knowledge-base/ into a Chroma vector database.
 
     python ingest.py                     # build, or reuse if nothing changed
     python ingest.py --force             # always rebuild
     python ingest.py --query "refund for a missing item"   # try a search
 
 The app runs this automatically on start-up, so you only need it to inspect or force a rebuild.
+The Render Docker image runs it at build time, so the live app starts with the DB ready.
 """
 
 import argparse

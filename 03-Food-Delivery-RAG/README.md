@@ -6,7 +6,7 @@ A RAG (Retrieval-Augmented Generation) support assistant for **CraveCart**, a fi
 
 | What it does | How |
 |---|---|
-| Answers from 18 policy, FAQ and HR documents | Chroma vector DB built from heading-aware chunks (BGE embeddings) |
+| Answers from 18 policy, FAQ and HR documents | Chroma vector DB built from heading-aware chunks (BGE embeddings on ONNX) |
 | Cites the exact section behind every answer | `[n]` markers in the answer, plus a Sources panel with the matching passages |
 | Gets refund and cancellation **maths exactly right** | The LLM calls Python tools on 11 demo orders (`#1042`–`#1052`) instead of doing money maths itself |
 | Understands follow-up questions | Each question plus the chat history is rewritten into one standalone search query |
@@ -22,7 +22,7 @@ flowchart LR
     STT -- yes --> W["Groq Whisper<br/>speech → text"]
     STT -- no --> R
     W --> R["Rewrite (gpt-oss-20b)<br/>chat history → standalone<br/>English query + language"]
-    R --> S["Search Chroma<br/>top 5 passages<br/>(BGE embeddings)"]
+    R --> S["Search Chroma<br/>top 5 passages<br/>(BGE embeddings, ONNX)"]
     S --> A["Answer (gpt-oss-120b)<br/>streams, cites [1] [2]…"]
     A <-->|"tool calls"| T["Exact calculators<br/>cancellation · refund · bill · order lookup"]
     T --> D[("11 demo orders<br/>data/sample_orders.json")]
@@ -37,7 +37,7 @@ flowchart LR
 ```
 03-Food-Delivery-RAG/
 ├── app.py                  # Gradio app (chat, Sources panel, demo orders, voice)
-├── ingest.py               # builds the RAG_DB (python ingest.py --help)
+├── ingest.py               # builds the vector DB (python ingest.py --help)
 ├── rag/
 │   ├── config.py           # settings, .env handling
 │   ├── knowledge_base.py   # loading, heading-aware chunking, Chroma, auto-refresh
@@ -52,16 +52,18 @@ flowchart LR
 ├── knowledge-base/         # 18 Markdown documents, one folder per doc_type
 ├── data/sample_orders.json # 11 demo orders, each showing a different policy case
 ├── notebooks/
-│   ├── RAG_DB.ipynb        # build the vector DB step by step (runs in Colab)
-│   └── RAG_APP.ipynb       # the whole assistant in a notebook (runs in Colab)
-├── tests/                  # 105 tests, no internet or API keys needed
-├── deploy/                 # Hugging Face Space files and deploy script
+│   ├── 00_class_baseline_rag_db.ipynb  # the simple class pipeline, for comparison
+│   ├── 01_build_vector_db.ipynb        # build the vector DB step by step (runs in Colab)
+│   └── 02_chat_app.ipynb               # the whole assistant in a notebook (runs in Colab)
+├── tests/                  # 113 tests, no internet or API keys needed
+├── Dockerfile              # the Render image (vector DB built at build time)
+├── deploy/                 # Hugging Face Space files (alternative host, needs PRO)
 └── docs/                   # demo GIF and screenshot
 ```
 
 ## Run it locally
 
-Needs Python 3.12 or newer. The first run downloads the embedding model (about 130 MB).
+Needs Python 3.12 or newer. The first run downloads the embedding model (about 67 MB).
 
 ```bash
 cd 03-Food-Delivery-RAG
@@ -81,7 +83,7 @@ Get a free Groq key at [console.groq.com/keys](https://console.groq.com/keys).
 python ingest.py --stats                       # chunks per document
 python ingest.py --force                       # rebuild the vector DB
 python ingest.py --query "late night fee"      # see what the search returns
-pytest                                         # run the 105 tests
+pytest                                         # run the 113 tests
 ```
 
 The vector DB rebuilds itself whenever a document, the chunk settings or the embedding model changes.
@@ -136,26 +138,32 @@ The vector DB rebuilds itself whenever a document, the chunk settings or the emb
 pytest
 ```
 
-The 105 tests use fake embeddings, a scripted fake LLM and a fake Whisper client, so they run offline with no keys. They check the calculators against every worked example in the policy documents, the citation and history logic, voice silence detection, and the vector DB refresh. GitHub Actions runs them on every push that touches this folder (`.github/workflows/food-rag-tests.yml`).
+The 113 tests use fake embeddings, a scripted fake LLM and a fake Whisper client, so they run offline with no keys. They check the calculators against every worked example in the policy documents, the citation and history logic, voice silence detection, and the vector DB refresh. GitHub Actions runs them on every push that touches this folder (`.github/workflows/food-rag-tests.yml`).
 
 ## Notebooks (Google Colab)
 
-- **`notebooks/RAG_DB.ipynb`** builds the vector DB step by step. It's the Colab version of the class notebook.
-- **`notebooks/RAG_APP.ipynb`** runs the whole assistant in a notebook and launches the Gradio app with a public link. Add `GROQ_API_KEY` under Colab's 🔑 Secrets first.
+Run them in order; each one works in Colab (it clones this repo) or locally.
 
-## Deploy
+- **`notebooks/00_class_baseline_rag_db.ipynb`** is the simple pipeline from class (load → split → `all-MiniLM-L6-v2` → Chroma → Groq), pointed at the CraveCart documents. It's the baseline the other two improve on.
+- **`notebooks/01_build_vector_db.ipynb`** builds the upgraded vector DB step by step: heading-aware chunks, BGE embeddings, auto-refresh.
+- **`notebooks/02_chat_app.ipynb`** runs the whole assistant in a notebook and launches the Gradio app with a public link. Add `GROQ_API_KEY` under Colab's 🔑 Secrets first.
 
-The deploy script and Space files are in [`deploy/`](deploy). It uploads only an allowlist of files (never `.env` or `.venv`).
+## Deploy (Render)
 
-**Status: not deployed yet.** Hugging Face returned `402 Payment Required` when creating the Gradio Space, because hosting Gradio Spaces on free CPU hardware needs a PRO subscription. Options:
+The live demo runs on Render's free plan from the [`render.yaml`](../render.yaml) Blueprint at the repo root (service `crave-assist`, Docker, built from this folder's [`Dockerfile`](Dockerfile)).
 
-1. Subscribe to PRO at [huggingface.co/pro](https://huggingface.co/pro), then run `./deploy/deploy_space.sh` (after `hf auth login`).
-2. Run it free on Colab with `notebooks/RAG_APP.ipynb` (a temporary public link per session).
-3. Host it on another free service. Render's free plan has 512 MB of memory, which is too small for the embedding model, so that isn't an option.
+- **Fits in 512 MB:** the BGE embeddings run on ONNX through fastembed instead of PyTorch (~430 MB peak instead of ~1 GB), and the Docker build downloads the model and builds the vector DB, so the live app starts in seconds.
+- **Only tested code goes live:** Render deploys a push only after the GitHub Actions tests pass (`autoDeployTrigger: checksPass`).
+- **Keys stay out of the repo:** `GROQ_API_KEY` (and optionally `GOOGLE_API_KEY`) are set in the Render dashboard under the service's Environment tab.
+- **Free-plan limits:** the service sleeps after 15 idle minutes and takes about a minute to wake. It shares the workspace's 750 free hours a month with the Brochure Generator demo.
+
+To run the same image locally: `docker build -t crave-assist . && docker run -p 7860:7860 --env-file .env crave-assist`.
+
+Colab is the no-account alternative: `notebooks/02_chat_app.ipynb` prints a temporary public link per session.
 
 ## Stack
 
-LangChain · Chroma · Hugging Face sentence-transformers (BGE) · Groq (`gpt-oss-120b`, `gpt-oss-20b`, Whisper) · Gemini (backup) · Gradio 6 · pytest
+LangChain · Chroma · BGE embeddings on ONNX (fastembed) · Groq (`gpt-oss-120b`, `gpt-oss-20b`, Whisper) · Gemini (backup) · Gradio 6 · pytest
 
 ---
 

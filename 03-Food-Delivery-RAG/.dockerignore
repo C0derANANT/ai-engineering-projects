@@ -1,0 +1,16 @@
+.env
+.env.*
+.venv/
+.cache/
+vector_db/
+class_baseline_vector_db/
+.pytest_cache/
+__pycache__/
+.gradio/
+*.ipynb
+notebooks/
+docs/
+tests/
+deploy/
+knowledge-base.zip
+.DS_Store

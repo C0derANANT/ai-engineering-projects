@@ -1,5 +1,6 @@
-# Render Blueprint: hosts the 01-Brochure-Generator demo on Render's free plan.
+# Render Blueprint: hosts the 01-Brochure-Generator and 03-Food-Delivery-RAG demos on Render's free plan.
 # Render -> New -> Blueprint -> pick this repo, then paste your Groq key when asked.
+# A service added here later is created on the next Blueprint sync; set its keys in the dashboard.
 services:
   - type: web
     name: ai-brochure-generator
@@ -17,3 +18,22 @@ services:
     envVars:
       - key: GROQ_API_KEY
         sync: false  # you type the value in Render's dashboard; it never goes in this repo
+
+  - type: web
+    name: crave-assist
+    runtime: docker
+    plan: free  # 512 MB RAM: fits because the embeddings run on ONNX, not PyTorch
+    region: singapore
+    rootDir: 03-Food-Delivery-RAG
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    # Deploy a push only after its GitHub Actions checks pass (food-rag-tests.yml)
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false  # you type the value in Render's dashboard; it never goes in this repo
+      - key: GOOGLE_API_KEY
+        sync: false  # optional: Gemini backup when Groq is rate-limited
+      - key: EMBEDDING_THREADS
+        value: "1"  # the free plan has a tenth of a CPU; more threads only fight over it

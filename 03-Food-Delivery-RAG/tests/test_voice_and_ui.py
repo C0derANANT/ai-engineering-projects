@@ -4,6 +4,7 @@ import pytest
 
 from rag import voice
 from rag.assistant import Reply
+from rag.config import server_options
 from rag.ui import EMPTY_SOURCES, sources_markdown, split_message
 from rag.voice import VoiceError, is_audio, transcribe
 
@@ -98,3 +99,13 @@ def test_sources_panel():
     cited_part, others = panel.split("Also retrieved")
     assert "[2]** ✅" in cited_part and "[1]**" in others and "[3]**" in others
     assert "refund time" in panel and "fake" in panel
+
+
+# ---- hosting -------------------------------------------------------------------------------
+def test_listens_on_render_port():
+    assert server_options({"PORT": "10000"}) == {"server_name": "0.0.0.0", "server_port": 10000}
+
+
+@pytest.mark.parametrize("environ", [{}, {"PORT": ""}, {"PORT": "abc"}, {"PORT": "0"}, {"PORT": "70000"}])
+def test_keeps_gradio_defaults_without_a_valid_port(environ):
+    assert server_options(environ) == {}

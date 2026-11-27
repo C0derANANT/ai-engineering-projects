@@ -78,7 +78,9 @@ def get_models(settings: Settings) -> ModelSet | None:
             api_key=google_key,
             base_url=GEMINI_BASE_URL,
             temperature=0,
-            max_retries=1,
+            # No retries: on a 429 the client waits out Retry-After (about a minute per call), so a
+            # busy backup used to keep the user waiting two minutes just to see "busy, try again"
+            max_retries=0,
             timeout=settings.llm_timeout_seconds,
         )
 

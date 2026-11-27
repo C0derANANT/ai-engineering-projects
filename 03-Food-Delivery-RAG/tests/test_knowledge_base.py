@@ -6,6 +6,7 @@ import pytest
 from langchain_core.embeddings import DeterministicFakeEmbedding
 
 from rag.knowledge_base import (
+    FastEmbedEmbeddings,
     chunk_header,
     load_documents,
     open_vector_store,
@@ -78,3 +79,31 @@ def test_vector_store_builds_once_then_reuses_and_refreshes(settings, tmp_path):
     hits = search(store, "late night fee", 3)
     assert [h.number for h in hits] == [1, 2, 3]
     assert all(0 <= h.score <= 1 and not h.text.startswith("[") for h in hits)
+
+
+class StubTextEmbedding:
+    """Stands in for fastembed.TextEmbedding so the test needs no model download."""
+
+    def __init__(self):
+        self.batches = []
+
+    def embed(self, texts, batch_size=8):
+        self.batches.append(texts)
+        return iter([[3.0, 4.0], [0.0, 0.0]][: len(texts)])
+
+
+def test_fastembed_wrapper_returns_unit_vectors():
+    stub = StubTextEmbedding()
+    embeddings = FastEmbedEmbeddings("BAAI/bge-small-en-v1.5", model=stub)
+    assert embeddings.embed_documents(["a", "b"]) == [[0.6, 0.8], [0.0, 0.0]]  # zero vector left alone
+    assert embeddings.embed_query("a") == [0.6, 0.8]
+    assert embeddings.embed_documents([]) == [] and len(stub.batches) == 2
+
+
+def test_changing_the_embedding_model_rebuilds(settings, tmp_path):
+    kb = tmp_path / "kb"
+    shutil.copytree(KB_DIR / "company", kb / "company")
+    settings = dataclasses.replace(settings, knowledge_base_dir=kb)
+    open_vector_store(settings, embeddings=FAKE_EMBEDDINGS)
+    other = dataclasses.replace(settings, embedding_model="sentence-transformers/all-MiniLM-L6-v2")
+    assert open_vector_store(other, embeddings=FAKE_EMBEDDINGS)[1].rebuilt

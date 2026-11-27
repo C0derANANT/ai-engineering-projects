@@ -4,6 +4,8 @@ Improvements over the class RAG_DB notebook:
 - Heading-aware chunks: Markdown is split at #, ## and ### headings first, so a chunk never
   mixes two policies, and each chunk is labelled with its document and section. Those labels
   power the citations in the app.
+- Better, lighter embeddings: BAAI/bge-small-en-v1.5 (better at retrieval than the class's
+  all-MiniLM-L6-v2), run with ONNX (fastembed) instead of PyTorch, so it fits a 512 MB server.
 - Self-refreshing: a fingerprint of the files and settings is stored next to the database.
   If a document changes, the database is rebuilt automatically; otherwise it loads instantly.
 - Safe loading: loose files at the top of knowledge-base/, empty files and non-UTF-8 files
@@ -20,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 
 from .config import Settings
@@ -27,6 +30,9 @@ from .config import Settings
 log = logging.getLogger(__name__)
 
 CHUNKER_VERSION = "2"  # bump when the chunking logic changes, to force a rebuild
+EMBEDDING_BACKEND = "fastembed-onnx"  # part of the fingerprint: vectors from another backend don't mix
+# Texts embedded at once. 32 doubles peak memory (~800 MB measured) for little speed gain; 8 stays near 430 MB.
+EMBED_BATCH_SIZE = 8
 MANIFEST_NAME = "rag_manifest.json"
 HEADERS = [("#", "h1"), ("##", "h2"), ("###", "h3")]
 
@@ -116,21 +122,49 @@ def split_documents(docs: list[Document], chunk_size: int = 1000, chunk_overlap:
 # -----------------------------------------------------------------------------------------
 def fingerprint(kb_dir: Path, settings: Settings) -> str:
     h = hashlib.sha256()
-    h.update(f"{CHUNKER_VERSION}|{settings.embedding_model}|{settings.chunk_size}|{settings.chunk_overlap}".encode())
+    h.update(
+        f"{CHUNKER_VERSION}|{EMBEDDING_BACKEND}|{settings.embedding_model}|"
+        f"{settings.chunk_size}|{settings.chunk_overlap}".encode()
+    )
     for path in sorted(Path(kb_dir).rglob("*.md")):
         h.update(path.relative_to(kb_dir).as_posix().encode())
         h.update(path.read_bytes())
     return h.hexdigest()
 
 
-def make_embeddings(settings: Settings):
-    """Hugging Face sentence-transformer embeddings (downloaded once, then cached)."""
-    from langchain_huggingface import HuggingFaceEmbeddings
+class FastEmbedEmbeddings(Embeddings):
+    """LangChain embeddings backed by fastembed (ONNX Runtime, no PyTorch).
 
-    return HuggingFaceEmbeddings(
-        model_name=settings.embedding_model,
-        encode_kwargs={"normalize_embeddings": True},
-    )
+    Vectors are scaled to length 1, so Chroma's cosine scores stay between 0 and 1.
+    """
+
+    def __init__(self, model_name: str, cache_dir: Path | None = None, threads: int | None = None, model=None):
+        if model is None:
+            from fastembed import TextEmbedding
+
+            model = TextEmbedding(model_name=model_name, cache_dir=str(cache_dir) if cache_dir else None, threads=threads)
+        self.model_name = model_name
+        self._model = model
+
+    @staticmethod
+    def _unit(vector) -> list[float]:
+        values = [float(x) for x in vector]
+        norm = sum(x * x for x in values) ** 0.5
+        return [x / norm for x in values] if norm else values
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        return [self._unit(v) for v in self._model.embed(list(texts), batch_size=EMBED_BATCH_SIZE)]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self.embed_documents([text])[0]
+
+
+def make_embeddings(settings: Settings) -> FastEmbedEmbeddings:
+    """BGE embeddings via fastembed (the model is downloaded once, then cached)."""
+    settings.embedding_cache_dir.mkdir(parents=True, exist_ok=True)
+    return FastEmbedEmbeddings(settings.embedding_model, settings.embedding_cache_dir, settings.embedding_threads)
 
 
 @dataclass
@@ -191,6 +225,7 @@ def open_vector_store(settings: Settings, embeddings=None, force_rebuild: bool =
                 "files": len(docs),
                 "chunks": len(chunks),
                 "embedding_model": settings.embedding_model,
+                "embedding_backend": EMBEDDING_BACKEND,
                 "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             },
             indent=2,

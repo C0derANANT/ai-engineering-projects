@@ -15,7 +15,7 @@ from .tools import build_tools
 log = logging.getLogger(__name__)
 
 # Keep the console readable: these libraries log every HTTP request at INFO level
-for noisy in ("httpx", "httpcore", "urllib3", "huggingface_hub", "sentence_transformers", "chromadb"):
+for noisy in ("httpx", "httpcore", "urllib3", "huggingface_hub", "fastembed", "chromadb"):
     logging.getLogger(noisy).setLevel(logging.WARNING)
 
 

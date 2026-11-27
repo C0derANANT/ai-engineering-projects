@@ -79,7 +79,7 @@ _DEVANAGARI = re.compile(r"[ऀ-ॿ]")
 
 NO_KEY_NOTICE = (
     "⚠️ **Live AI answers are switched off** because no `GROQ_API_KEY` is configured "
-    "(owner: add it to `.env`, or as a secret on Hugging Face Spaces).\n\n"
+    "(owner: add it to `.env`, or as an environment variable on Render).\n\n"
     "Here are the most relevant help-article passages for your question:"
 )
 

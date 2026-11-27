@@ -2,7 +2,7 @@
 Crave Assist: a RAG help assistant for CraveCart, a fictional Zomato-style food delivery company.
 
 Stack (as in the Incapp AI Engineer class, plus upgrades):
-    - LangChain + Chroma + Hugging Face embeddings (BAAI/bge-small-en-v1.5)  -> the RAG_DB
+    - LangChain + Chroma + BGE embeddings (BAAI/bge-small-en-v1.5, ONNX)    -> the vector DB
     - Groq gpt-oss-120b (Gemini as automatic backup)                        -> answers + tool calls
     - Groq Whisper                                                           -> voice questions
     - Gradio ChatInterface                                                   -> the chat UI
@@ -18,7 +18,7 @@ import logging
 import gradio as gr
 
 from rag.assistant import HEARD_PREFIX
-from rag.config import get_secret
+from rag.config import get_secret, server_options
 from rag.service import build_service
 from rag.ui import ABOUT, CSS, EMPTY_SOURCES, EXAMPLES, HEADER, sources_markdown, split_message
 from rag.voice import VoiceError, is_audio, transcribe
@@ -107,11 +107,14 @@ with gr.Blocks(title="Crave Assist · CraveCart RAG demo", fill_height=True) as 
 
 
 def launch(**kwargs):
-    """Start the app (also used by notebooks/RAG_APP.ipynb, e.g. launch(share=True) in Colab)."""
+    """Start the app (also used by notebooks/02_chat_app.ipynb, e.g. launch(share=True) in Colab).
+
+    On Render, $PORT is set, so the app listens on 0.0.0.0:$PORT.
+    """
     return demo.queue(default_concurrency_limit=8).launch(
         theme=gr.themes.Soft(primary_hue="orange", secondary_hue="amber"),
         css=CSS,
-        **kwargs,
+        **{**server_options(), **kwargs},
     )
 
 
