@@ -11,6 +11,5 @@ __pycache__/
 notebooks/
 docs/
 tests/
-deploy/
 knowledge-base.zip
 .DS_Store

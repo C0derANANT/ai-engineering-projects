@@ -1,4 +1,4 @@
-"""Settings for the assistant: paths, model names and limits.
+"""Settings: paths, model names and limits.
 
 Everything can be overridden with environment variables (or a .env file next to app.py),
 so the same code runs on a laptop, in Colab and on Render.
@@ -64,9 +64,6 @@ class Settings:
     vector_db_dir: Path = field(
         default_factory=lambda: _env_path("VECTOR_DB_DIR", PROJECT_DIR / "vector_db")
     )
-    orders_file: Path = field(
-        default_factory=lambda: _env_path("ORDERS_FILE", PROJECT_DIR / "data" / "sample_orders.json")
-    )
     collection_name: str = "cravecart_kb"
 
     # Retrieval
@@ -83,18 +80,13 @@ class Settings:
     chunk_overlap: int = 150
     top_k: int = field(default_factory=lambda: _env_int("TOP_K", 5))
 
-    # LLMs (same Groq model as the class notebooks; Gemini is an optional backup)
+    # LLMs on Groq (the answer model is the same one the class notebooks use)
     groq_model: str = field(default_factory=lambda: os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b"))
     # Small, fast model for rewriting questions; it has its own Groq rate limit
     rewrite_model: str = field(default_factory=lambda: os.environ.get("REWRITE_MODEL", "openai/gpt-oss-20b"))
-    gemini_model: str = field(default_factory=lambda: os.environ.get("GEMINI_MODEL", "gemini-3.6-flash"))
-    whisper_model: str = field(
-        default_factory=lambda: os.environ.get("WHISPER_MODEL", "whisper-large-v3-turbo")
-    )
     llm_timeout_seconds: int = 60
 
     # Guard rails for odd input
     max_question_chars: int = 2000
     max_history_messages: int = 8  # last 4 exchanges
     max_history_chars_per_message: int = 1500
-    max_tool_rounds: int = 4

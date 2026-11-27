@@ -6,9 +6,11 @@ import pytest
 from langchain_core.embeddings import DeterministicFakeEmbedding
 
 from rag.knowledge_base import (
+    BGE_QUERY_INSTRUCTION,
     FastEmbedEmbeddings,
     chunk_header,
     load_documents,
+    make_embeddings,
     open_vector_store,
     search,
     split_documents,
@@ -98,6 +100,18 @@ def test_fastembed_wrapper_returns_unit_vectors():
     assert embeddings.embed_documents(["a", "b"]) == [[0.6, 0.8], [0.0, 0.0]]  # zero vector left alone
     assert embeddings.embed_query("a") == [0.6, 0.8]
     assert embeddings.embed_documents([]) == [] and len(stub.batches) == 2
+
+
+def test_bge_queries_get_the_search_instruction(settings, monkeypatch):
+    import fastembed
+
+    monkeypatch.setattr(fastembed, "TextEmbedding", lambda **kwargs: StubTextEmbedding())
+    bge = make_embeddings(settings)
+    bge.embed_query("late night fee")
+    bge.embed_documents(["a passage"])
+    assert bge._model.batches == [[BGE_QUERY_INSTRUCTION + "late night fee"], ["a passage"]]  # queries only
+    other = make_embeddings(dataclasses.replace(settings, embedding_model="sentence-transformers/all-MiniLM-L6-v2"))
+    assert other.query_prefix == ""
 
 
 def test_changing_the_embedding_model_rebuilds(settings, tmp_path):

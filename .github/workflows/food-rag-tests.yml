@@ -1,5 +1,5 @@
 # Runs the Food Delivery RAG tests whenever that project changes.
-# The tests use fake embeddings, a fake LLM and a fake Whisper client, so they need no API keys.
+# The tests use fake embeddings and a fake LLM, so they need no API keys.
 name: Food Delivery RAG tests
 
 on:

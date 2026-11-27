@@ -18,7 +18,6 @@ RUN pip install -r requirements.txt
 
 COPY app.py ingest.py ./
 COPY rag/ rag/
-COPY data/ data/
 COPY knowledge-base/ knowledge-base/
 
 # Download the model and build the vector DB now, then run as a normal user

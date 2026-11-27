@@ -132,18 +132,31 @@ def fingerprint(kb_dir: Path, settings: Settings) -> str:
     return h.hexdigest()
 
 
+# BAAI's instruction for BGE v1.5 English models: prefixing short search queries (not the passages)
+# with it improves retrieval. On this knowledge base it moved the right section up the ranking.
+BGE_QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
+
+
 class FastEmbedEmbeddings(Embeddings):
     """LangChain embeddings backed by fastembed (ONNX Runtime, no PyTorch).
 
     Vectors are scaled to length 1, so Chroma's cosine scores stay between 0 and 1.
     """
 
-    def __init__(self, model_name: str, cache_dir: Path | None = None, threads: int | None = None, model=None):
+    def __init__(
+        self,
+        model_name: str,
+        cache_dir: Path | None = None,
+        threads: int | None = None,
+        model=None,
+        query_prefix: str = "",
+    ):
         if model is None:
             from fastembed import TextEmbedding
 
             model = TextEmbedding(model_name=model_name, cache_dir=str(cache_dir) if cache_dir else None, threads=threads)
         self.model_name = model_name
+        self.query_prefix = query_prefix
         self._model = model
 
     @staticmethod
@@ -158,13 +171,17 @@ class FastEmbedEmbeddings(Embeddings):
         return [self._unit(v) for v in self._model.embed(list(texts), batch_size=EMBED_BATCH_SIZE)]
 
     def embed_query(self, text: str) -> list[float]:
-        return self.embed_documents([text])[0]
+        return self.embed_documents([self.query_prefix + text])[0]
 
 
 def make_embeddings(settings: Settings) -> FastEmbedEmbeddings:
     """BGE embeddings via fastembed (the model is downloaded once, then cached)."""
     settings.embedding_cache_dir.mkdir(parents=True, exist_ok=True)
-    return FastEmbedEmbeddings(settings.embedding_model, settings.embedding_cache_dir, settings.embedding_threads)
+    name = settings.embedding_model.lower()
+    prefix = BGE_QUERY_INSTRUCTION if "bge-" in name and "-en" in name else ""
+    return FastEmbedEmbeddings(
+        settings.embedding_model, settings.embedding_cache_dir, settings.embedding_threads, query_prefix=prefix
+    )
 
 
 @dataclass

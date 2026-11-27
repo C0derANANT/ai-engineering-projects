@@ -53,7 +53,5 @@ services:
     envVars:
       - key: GROQ_API_KEY
         sync: false  # you type the value in Render's dashboard; it never goes in this repo
-      - key: GOOGLE_API_KEY
-        sync: false  # optional: Gemini backup when Groq is rate-limited
       - key: EMBEDDING_THREADS
         value: "1"  # the free plan has a tenth of a CPU; more threads only fight over it

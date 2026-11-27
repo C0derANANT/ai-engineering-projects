@@ -16,10 +16,10 @@ DOC_TYPE_ICONS = {
 }
 
 EXAMPLES = [
-    "I want to cancel order 1042. How much will I get back?",
-    "Order 1045 mein Mutton Korma nahi aaya, kitna refund milega?",
-    "मेरा ऑर्डर 1044 बहुत लेट है, क्या मुझे कुछ मिलेगा?",
-    "How much would a ₹450 order from 6.5 km away cost with CraveCart Plus?",
+    "Can I cancel my order after the restaurant starts cooking? Is there a fee?",
+    "Mera order 40 minute late hai, kya mujhe kuch refund milega?",
+    "मेरे ऑर्डर में एक आइटम नहीं आया, रिफंड कैसे मिलेगा?",
+    "What do I get with CraveCart Plus, and how much does it cost?",
     "What does error CC-PAY-302 mean?",
     "How many sick leaves do employees get, and do they carry forward?",
 ]
@@ -28,8 +28,8 @@ HEADER = """
 <div class="cc-header">
   <div class="cc-title">🍛 Crave Assist</div>
   <div class="cc-subtitle">
-    RAG help assistant for <b>CraveCart</b>, a fictional Zomato-style food delivery company.
-    Answers cite their sources, order maths is exact, and it speaks English, हिंदी and Hinglish (type or 🎙️ speak).
+    RAG demo: ask about <b>CraveCart</b>, a fictional food delivery company. Answers come only from its
+    18 help, policy and HR documents, with the sources shown. Ask in English, हिंदी or Hinglish.
   </div>
 </div>
 """
@@ -38,18 +38,19 @@ ABOUT = """
 ### How it works
 1. **Rewrite:** your question (and the chat so far) is turned into one clear English search query, so
    follow-ups like *"what if it was already cooking?"* and Hindi/Hinglish questions find the right documents.
-2. **Retrieve:** the 5 closest passages come from a Chroma vector DB built from 18 policy and FAQ documents,
+2. **Retrieve:** the 5 closest passages come from a Chroma vector DB built from 18 Markdown documents,
    split at their headings (BGE embeddings).
-3. **Answer:** Groq's `gpt-oss-120b` writes the answer, citing passages as [1], [2]… For order questions it
-   calls Python tools that apply the refund and cancellation policies exactly, so the ₹ figures are never guessed.
-4. **Backup:** if Groq is rate-limited, Gemini takes over automatically.
+3. **Answer:** Groq's `gpt-oss-120b` answers from those passages only, citing them as [1], [2]…, in the
+   language you wrote in. If the documents don't cover something, it says so instead of guessing.
 
-### Try the demo orders
-Orders **#1042–#1052** are made-up orders that each show a different policy case: grace period,
-50% and 100% cancellation fees, very late orders, COD dues, missing items, scheduled orders and more.
-They're a frozen snapshot, so the answers are the same every time.
+### What it knows
+Company overview, fees and CraveCart Plus · ordering, tracking, delivery times, changing and cancelling
+orders · cancellation and refund policies · payment and app FAQs · support procedures and error codes ·
+HR policies (leave, benefits, onboarding, code of conduct).
 
-<sub>CraveCart, its policies and its orders are fictional, written for a learning project.</sub>
+It can't see real orders or accounts: ask how a policy works, not about a specific order.
+
+<sub>CraveCart and its documents are fictional, written for a learning project.</sub>
 """
 
 EMPTY_SOURCES = "_Ask a question and the passages behind the answer appear here, with the ones it cites marked ✅._"
@@ -64,18 +65,6 @@ footer {display: none !important}
 """
 
 
-def split_message(message) -> tuple[str, list[str]]:
-    """ChatInterface (multimodal) sends {'text': ..., 'files': [...]}; plain text is accepted too."""
-    if isinstance(message, dict):
-        files = []
-        for f in message.get("files") or []:
-            path = f.get("path") if isinstance(f, dict) else getattr(f, "path", f)
-            if path:
-                files.append(str(path))
-        return (message.get("text") or "").strip(), files
-    return str(message or "").strip(), []
-
-
 def _quote(text: str, limit: int = 700) -> str:
     """A passage for the Sources panel: shortened, with its headings shown as bold text."""
     text = re.sub(r"(?m)^#{1,6}\s+(.+)$", r"**\1**", text.strip())
@@ -86,15 +75,12 @@ def _quote(text: str, limit: int = 700) -> str:
 
 def sources_markdown(reply: Reply | None) -> str:
     """The right-hand 'Sources' panel for one answer."""
-    if reply is None or (not reply.hits and not reply.tools_used):
+    if reply is None or not reply.hits:
         return EMPTY_SOURCES
     cited_numbers = reply.cited or parse_citations(reply.text, len(reply.hits))
     cited = [h for h in reply.hits if h.number in cited_numbers]
     others = [h for h in reply.hits if h.number not in cited_numbers]
     parts = []
-
-    if reply.tools_used:
-        parts.append("#### 🧮 Calculated with tools\n" + "\n".join(f"- `{t}`" for t in reply.tools_used))
 
     def block(hit, mark):
         icon = DOC_TYPE_ICONS.get(hit.doc_type, "📄")

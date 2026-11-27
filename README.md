@@ -7,7 +7,7 @@ LLM APIs, prompt engineering, web scraping, streaming chat UIs and document gene
 |---|---------|--------------|------|
 | 01 | [AI Company Brochure Generator](01-Brochure-Generator) · [live demo](https://ai-brochure-generator-af0t.onrender.com) | Reads a company's website and writes a polished brochure in 11 languages, with your choice of sections, brand colour and logo, exported as styled PDF and DOCX. No invented contact details; Gemini takes over when Groq is busy | Gradio, Groq / Gemini, BeautifulSoup, fpdf2 + HarfBuzz, python-docx |
 | 02 | [AI Movie](02-AI-Movie-Chatbot) · [live demo](https://ai-movie-chatbot-j2i4.onrender.com) | Movie chatbot that looks films up on Wikipedia with tool calls instead of answering from memory: director, cast and characters, budget, box office, plot, hit or flop, with source links. English, Hindi and Hinglish, typed or spoken | OpenAI SDK tool calling, Groq (gpt-oss, Qwen, Whisper), Gemini backup, Wikipedia API, Gradio |
-| 03 | [Crave Assist: Food Delivery RAG](03-Food-Delivery-RAG) · [live demo](https://crave-assist.onrender.com) | RAG help assistant for a Zomato-style food delivery company. Answers from 18 policy and FAQ documents with citations, does exact refund and fee maths with tools, and speaks English, Hindi and Hinglish, with voice questions | LangChain, Chroma, BGE embeddings (ONNX), Groq (gpt-oss, Whisper), Gemini backup, Gradio |
+| 03 | [Crave Assist: Food Delivery RAG](03-Food-Delivery-RAG) · [live demo](https://crave-assist.onrender.com) | RAG Q&A over a fictional Zomato-style company's 18 help, policy and HR documents. Answers only from the retrieved passages, cites them, handles follow-up questions, and replies in English, Hindi or Hinglish | LangChain, Chroma, BGE embeddings (ONNX), Groq (gpt-oss), Gradio |
 
 Every project has tests that run on GitHub Actions and a Docker image deployed on Render's free plan (live demos take about a minute to wake after a quiet spell).
 
@@ -27,7 +27,7 @@ Get a free Groq API key at [console.groq.com/keys](https://console.groq.com/keys
 ## 🧰 Skills used
 
 - **LLMs:** OpenAI-compatible APIs (Groq, Gemini), system prompts, streaming, multi-turn chat memory, tool calling, automatic fallback between models
-- **RAG:** heading-aware chunking, Chroma vector search, query rewriting, citations
+- **RAG:** heading-aware chunking, BGE embeddings, Chroma vector search, query rewriting for follow-ups, citations
 - **Python:** modular packages, dataclasses, type hints, logging, friendly error handling
 - **Web:** scraping with Requests + BeautifulSoup, the Wikipedia API
 - **UI:** Gradio Blocks and ChatInterface, voice input with Whisper
