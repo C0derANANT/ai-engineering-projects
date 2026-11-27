@@ -1,0 +1,9 @@
+.env
+.env.*
+.venv/
+.pytest_cache/
+__pycache__/
+.gradio/
+*.ipynb
+tests/
+docs/

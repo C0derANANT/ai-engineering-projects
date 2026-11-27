@@ -11,7 +11,10 @@ from brochure import scraper
 from brochure.scraper import (
     MAX_CHARS_PER_PAGE,
     ScrapeError,
+    _cf_decode,
     _check_public_host,
+    _contact_details,
+    _reveal_cf_emails,
     _key_page_links,
     _logo_candidates,
     _usable_logo,
@@ -238,3 +241,27 @@ def test_usable_logo_shrinks_big_images():
 ])
 def test_usable_logo_rejects_unsuitable_files(data):
     assert _usable_logo(data) is None
+
+
+# --------------------------------------------------------------------------
+# Cloudflare email protection
+# --------------------------------------------------------------------------
+def _cf_encode(email: str, key: int = 0x42) -> str:
+    return f"{key:02x}" + "".join(f"{ord(c) ^ key:02x}" for c in email)
+
+
+def test_cloudflare_hidden_emails_are_revealed():
+    code = _cf_encode("support@acme.com")
+    page = soup(
+        f'<body><p>Write to <span class="__cf_email__" data-cfemail="{code}">[email&#160;protected]</span></p>'
+        f'<a href="/cdn-cgi/l/email-protection#{_cf_encode("sales@acme.com")}">[email&#160;protected]</a></body>'
+    )
+    _reveal_cf_emails(page)
+    assert "support@acme.com" in _visible_text(soup(str(page)))
+    assert "Email: sales@acme.com" in _contact_details(page)
+    assert "protected" not in str(page)
+
+
+@pytest.mark.parametrize("code", ["", "zz", "42", "4202"])
+def test_broken_cloudflare_codes_are_left_alone(code):
+    assert _cf_decode(code) is None

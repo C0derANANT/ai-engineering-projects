@@ -139,6 +139,38 @@ def _open(session: requests.Session, url: str, headers: dict | None = None) -> t
     raise ScrapeError("it redirects too many times")
 
 
+_CF_EMAIL_PATH = "/cdn-cgi/l/email-protection"
+
+
+def _cf_decode(hex_code: str) -> str | None:
+    """Decode an email hidden by Cloudflare's "email protection" (a hex string whose
+    first byte is the XOR key for the rest). None if it isn't a valid code."""
+    try:
+        data = bytes.fromhex(hex_code)
+        email = bytes(b ^ data[0] for b in data[1:]).decode()
+    except (ValueError, IndexError, UnicodeDecodeError):
+        return None
+    return email if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email) else None
+
+
+def _reveal_cf_emails(soup: BeautifulSoup) -> None:
+    """Put back the real addresses on sites behind Cloudflare, which replaces every
+    email with "[email protected]" plus an encoded copy for its JavaScript to decode.
+    Without this the brochure got "[email protected]" instead of the company's email."""
+    for tag in soup.select("[data-cfemail]"):
+        email = _cf_decode(tag["data-cfemail"])
+        if email:
+            tag.replace_with(email)
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if _CF_EMAIL_PATH in href and "#" in href:
+            email = _cf_decode(href.rsplit("#", 1)[1])
+            if email:
+                a["href"] = f"mailto:{email}"
+                if "email" in a.get_text().lower() and "protected" in a.get_text().lower():
+                    a.string = email
+
+
 def _fetch(session: requests.Session, url: str, deadline: float) -> tuple[str, BeautifulSoup]:
     """Download one HTML page, following redirects safely. Returns (final_url, soup)."""
     url, response = _open(session, url)
@@ -154,7 +186,9 @@ def _fetch(session: requests.Session, url: str, deadline: float) -> tuple[str, B
                 logger.info("Only reading the first %d KB of %s", len(body) // 1024, url)
                 break
         encoding = response.encoding if "charset=" in content_type else None
-    return url, BeautifulSoup(bytes(body), "html.parser", from_encoding=encoding)
+    soup = BeautifulSoup(bytes(body), "html.parser", from_encoding=encoding)
+    _reveal_cf_emails(soup)
+    return url, soup
 
 
 def _describe(error: Exception) -> str:

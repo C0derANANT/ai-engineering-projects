@@ -1,9 +1,12 @@
-# Runs the Brochure Generator's tests on every push.
+# Runs the Brochure Generator's tests whenever that project changes.
 # The tests never use the internet or an API key, so they need no secrets.
 name: Brochure Generator tests
 
 on:
   push:
+    paths:
+      - "01-Brochure-Generator/**"
+      - ".github/workflows/brochure-tests.yml"
   workflow_dispatch:  # adds a "Run workflow" button in the Actions tab
 
 permissions:

@@ -207,3 +207,12 @@ def test_pdf_and_docx_can_share_a_basename(out_dir):
     pdf = export_pdf(SAMPLE, "Acme", basename)
     docx = export_docx(SAMPLE, "Acme", basename)
     assert pdf.stem == docx.stem == basename
+
+
+@pytest.mark.parametrize("char", [" ", " ", " ", " "])
+def test_typographic_spaces_never_vanish_from_the_pdf(char):
+    # gpt-oss writes "₹ 100" and French "prix :"; Arial has no glyph for some of these
+    pdf = exporters.BrochurePDF("Acme", sample_text=f"Price{char}100")
+    cleaned = pdf.clean(f"Price{char}100")
+    assert char not in cleaned or pdf._has_glyph(char)
+    assert cleaned.replace(char, " ") == "Price 100"

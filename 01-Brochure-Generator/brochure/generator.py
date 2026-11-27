@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI, OpenAIError
 
-from .config import LLMConfig, available_providers, get_llm_config, missing_key_message
+from .config import HOSTED, LLMConfig, available_providers, get_llm_config, missing_key_message
 from .scraper import WebsiteContext
 
 logger = logging.getLogger(__name__)
@@ -173,7 +173,8 @@ def _friendly_error(e: Exception, config: LLMConfig, model: str) -> str:
     if isinstance(e, APIStatusError):
         code, detail = e.status_code, _error_detail(e)
         if code in (401, 403):
-            return f"{p} rejected your API key. Check {config.key_env} in your .env file. ({detail})"
+            where = "the server's settings (site owner)" if HOSTED else "your .env file"
+            return f"{p} rejected the API key. Check {config.key_env} in {where}. ({detail})"
         if code == 404:
             return f"{p} has no model called '{model}'. Pick another model or check {config.model_env} in .env."
         if code == 413:
@@ -194,26 +195,26 @@ def _friendly_error(e: Exception, config: LLMConfig, model: str) -> str:
 # --------------------------------------------------------------------------
 # Streaming
 # --------------------------------------------------------------------------
-def stream_brochure(
-    req: BrochureRequest, on_warning: Callable[[str], None] | None = None
-) -> Iterator[str]:
-    """Yield the brochure Markdown as it grows. Raises BrochureError on failure.
+class _ProviderFailed(Exception):
+    """One provider failed; `message` is for the user, `retryable` means another provider may work."""
 
-    `on_warning` is called with a message if the brochure came back usable but
-    imperfect (for example cut off because the model hit its length limit).
-    """
-    if not req.company_name.strip():
-        raise BrochureError("Please enter a company name.")
+    def __init__(self, message: str, retryable: bool):
+        super().__init__(message)
+        self.message, self.retryable = message, retryable
 
-    config = get_llm_config(req.provider)
-    if config is None:
-        if req.provider and available_providers():
-            raise BrochureError(f"No API key set for {req.provider}.")
-        raise BrochureError(missing_key_message())
-    model = (req.model or "").strip() or config.model
 
-    client = OpenAI(base_url=config.base_url, api_key=config.api_key, timeout=60)
-    raw, shown, finish_reason = "", "", None
+def _is_retryable(e: Exception) -> bool:
+    """Busy or unreachable (worth trying the other provider), not a bad key or request."""
+    if isinstance(e, APIStatusError):
+        return e.status_code in (408, 413, 429) or e.status_code >= 500
+    return isinstance(e, (APIConnectionError, APITimeoutError))
+
+
+def _stream_from(config: LLMConfig, model: str, req: BrochureRequest, progress: dict,
+                 retries: int = 2) -> Iterator[str]:
+    """Stream one provider's brochure. Returns the finish reason; raises _ProviderFailed."""
+    client = OpenAI(base_url=config.base_url, api_key=config.api_key, timeout=60, max_retries=retries)
+    raw, finish_reason = "", None
     try:
         stream = client.chat.completions.create(
             model=model, messages=_build_messages(req), temperature=0.7, stream=True
@@ -226,25 +227,67 @@ def stream_brochure(
                 raw += (choice.delta.content if choice.delta else None) or ""
                 finish_reason = choice.finish_reason or finish_reason
                 text = clean_output(raw)
-                if text != shown:
-                    shown = text
+                if text != progress["shown"]:
+                    progress["shown"] = text
                     yield text
         finally:
             stream.close()
     except OpenAIError as e:
-        logger.warning("LLM request failed: %s", e)
-        raise BrochureError(_friendly_error(e, config, model)) from e
+        logger.warning("LLM request to %s failed: %s", config.provider, e)
+        raise _ProviderFailed(_friendly_error(e, config, model), _is_retryable(e)) from e
     except Exception as e:  # network errors while reading the stream are not wrapped by the SDK
-        logger.warning("LLM stream broke: %r", e)
-        raise BrochureError(f"The connection to {config.provider} dropped. Please try again.") from e
+        logger.warning("LLM stream from %s broke: %r", config.provider, e)
+        raise _ProviderFailed(f"The connection to {config.provider} dropped. Please try again.", True) from e
+    return finish_reason
 
+
+def stream_brochure(
+    req: BrochureRequest, on_warning: Callable[[str], None] | None = None
+) -> Iterator[str]:
+    """Yield the brochure Markdown as it grows. Raises BrochureError on failure.
+
+    If the provider is busy or down before writing anything (rate limit, server error,
+    timeout) and another provider has a key, that one writes the brochure instead,
+    unless the request asked for a specific provider.
+
+    `on_warning` is called with a message if the brochure came back usable but
+    imperfect (for example cut off because the model hit its length limit), or when
+    the backup provider took over.
+    """
+    if not req.company_name.strip():
+        raise BrochureError("Please enter a company name.")
+
+    config = get_llm_config(req.provider)
+    if config is None:
+        if req.provider and available_providers():
+            raise BrochureError(f"No API key set for {req.provider}.")
+        raise BrochureError(missing_key_message())
+    backups = [] if req.provider else [c for c in available_providers().values() if c.provider != config.provider]
+
+    progress = {"shown": ""}
+    for attempt, current in enumerate([config, *backups]):
+        model = ((req.model or "").strip() if attempt == 0 else "") or current.model
+        try:
+            # With a backup waiting, don't sit out a rate limit (the SDK honours Retry-After)
+            retries = 0 if attempt < len(backups) else 2
+            finish_reason = yield from _stream_from(current, model, req, progress, retries)
+            break
+        except _ProviderFailed as failure:
+            is_last = attempt == len(backups)
+            if progress["shown"] or is_last or not failure.retryable:
+                raise BrochureError(failure.message) from failure.__cause__
+            logger.warning("Switching from %s to %s", current.provider, backups[attempt].provider)
+            if on_warning:
+                on_warning(f"{current.provider} is busy, so {backups[attempt].provider} is writing this brochure.")
+
+    shown = progress["shown"]
     if not shown:
         if finish_reason == "length":
             raise BrochureError("The model used up its output limit before writing anything. Try again.")
         raise BrochureError("The model returned an empty response. Please try again.")
     if finish_reason is None:
         raise BrochureError(
-            f"The connection to {config.provider} ended before the brochure was finished. Please try again."
+            f"The connection to {current.provider} ended before the brochure was finished. Please try again."
         )
     if finish_reason == "length" and on_warning:
         on_warning("The model hit its length limit, so the end of the brochure may be cut off.")

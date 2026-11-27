@@ -1,3 +1,11 @@
-openai
-gradio
-python-dotenv
+# UI
+gradio==6.20.0
+
+# LLMs (Groq first, Gemini as backup) and Groq Whisper, all through the OpenAI-compatible API
+openai==3.59.0
+
+# Wikipedia lookups
+requests==2.34.2
+beautifulsoup4==4.15.0
+
+python-dotenv==1.2.4

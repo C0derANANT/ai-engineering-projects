@@ -157,7 +157,7 @@ The [live demo](https://crave-assist.onrender.com) runs on Render's free plan fr
 - **Fits in 512 MB:** the BGE embeddings run on ONNX through fastembed instead of PyTorch (~430 MB peak instead of ~1 GB), and the Docker build downloads the model and builds the vector DB, so the live app starts in seconds.
 - **Only tested code goes live:** Render deploys a push only after the GitHub Actions tests pass (`autoDeployTrigger: checksPass`).
 - **Keys stay out of the repo:** `GROQ_API_KEY` (and optionally `GOOGLE_API_KEY`) are set in the Render dashboard under the service's Environment tab.
-- **Free-plan limits:** the service sleeps after 15 idle minutes and takes about a minute to wake. It shares the workspace's 750 free hours a month with the Brochure Generator demo.
+- **Free-plan limits:** the service sleeps after 15 idle minutes and takes about a minute to wake. It shares the workspace's 750 free hours a month with the other demos in this repo.
 
 To run the same image locally: `docker build -t crave-assist . && docker run -p 7860:7860 --env-file .env crave-assist`.
 

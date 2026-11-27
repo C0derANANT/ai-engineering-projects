@@ -2,15 +2,9 @@
 
 [![Tests](https://github.com/C0derANANT/ai-engineering-projects/actions/workflows/brochure-tests.yml/badge.svg)](https://github.com/C0derANANT/ai-engineering-projects/actions/workflows/brochure-tests.yml)
 
-Turn any company's website into a polished, ready-to-share brochure in seconds.
-The app reads the company's website, uses an LLM to write the brochure in the
-language, tone and sections you choose, shows a live preview, and exports it as
-a styled **PDF** and **Word (DOCX)** file in your brand colour.
+Turn any company's website into a polished, ready-to-share brochure in seconds. The app reads the website, has an LLM write the brochure in the language, tone and sections you pick, streams a live preview you can edit, and exports a styled **PDF** and **Word (DOCX)** file in your brand colour. Built for the Incapp AI Engineer course.
 
-**🌐 Live demo: [ai-brochure-generator-af0t.onrender.com](https://ai-brochure-generator-af0t.onrender.com)**
-(free hosting, kept awake by a [GitHub Action](../.github/workflows/keep-awake.yml) that visits it every 10 minutes, so it normally opens straight away)
-
-Built as part of the Incapp AI Engineer course.
+**Live demo: [ai-brochure-generator-af0t.onrender.com](https://ai-brochure-generator-af0t.onrender.com)** (free plan: the first visit after a quiet spell takes about a minute to wake up).
 
 ![The app: settings on the left, live brochure preview on the right](docs/app.jpg)
 
@@ -21,76 +15,66 @@ Built as part of the Incapp AI Engineer course.
 
 </details>
 
-## ✨ Features
+| What it does | How |
+|---|---|
+| Writes from **real facts** on the company's site | Scrapes the homepage plus the best About, Services and Contact/Careers pages, including emails and phone numbers |
+| **Never makes up** contact details or numbers | The prompt forbids it; a missing detail becomes a `[Phone]`-style placeholder you fill in or that's left out of the files |
+| Speaks **11 languages** | English, Hindi, Marathi, Spanish, French, German, Portuguese, Italian, Japanese, Chinese and Korean, headings included |
+| Exports print-ready **PDF and DOCX** | fpdf2 with HarfBuzz text shaping (so Hindi renders correctly), python-docx with real Word headings and lists |
+| Uses **your brand colour and logo** | Builds a readable palette from one colour (WCAG contrast), finds the site's logo and puts it on the title banner |
+| Lets you **edit before downloading** | An Edit tab with the Markdown; one click re-exports, with no new AI call |
+| Stays up when the AI is busy | Groq first; if it's rate-limited or down before writing anything, Gemini takes over automatically |
+| Is **safe to share publicly** | Refuses private-network addresses at every redirect, caps page size and time, only makes web, email and phone links clickable |
 
-- **Website-aware:** scrapes the homepage plus the About, Services and Contact/Careers pages for real facts, including emails and phone numbers for "Get in Touch"
-- **Company logo:** finds the site's logo (its app icon, a large favicon, or a square social-share image) and puts it on the PDF title banner and at the top of the Word file. Logos get the same safety checks as pages (no private network addresses, max 1 MB, must be a real image of at least 64 px); with no usable logo the banner simply has none
-- **11 languages:** English, Hindi, Marathi, Spanish, French, German, Portuguese, Italian, Japanese, Chinese and Korean, with headings translated too
-- **Pick your sections:** About Us, Mission & Vision, Services & Products, Technologies, Why Choose Us, Culture, FAQ, Get in Touch
-- **Brand colour:** recolours the PDF title banner, headings and bullets and the Word headings. Light colours stay readable because text colours are adjusted automatically. Changing the colour after generating re-exports the files instantly, with no new AI call
-- **Customisable style:** tone (Professional, Friendly, Witty, Luxury), format (bullets / paragraphs / mixed), length and target audience
-- **One-click examples:** five ready-made setups (e.g. Chai Point in Hindi, Stripe in Spanish with an FAQ)
-- **Live streaming preview:** watch the brochure being written
-- **Edit before you download:** the **Edit** tab holds the brochure's text, so you can fix a sentence or fill in a missing detail, then press **Update PDF & DOCX** (no new AI call)
-- **No made-up facts:** the prompt forbids inventing contact details, numbers or clients. A missing detail becomes a `[Phone]`-style placeholder that the app lists for you to fill in, and any placeholder you leave is kept out of the PDF and DOCX (a line like `[Phone] – [Address]` is dropped, and so is a heading with nothing real left under it)
-- **Styled exports:** PDF with a title banner, section headings, real bullets and page numbers; DOCX with proper Word headings and lists
-- **Clickable links:** websites, emails and phone links open with one click in both the PDF and the Word file, including plain addresses like `huggingface.co` or `press@acme.com` in the text. Only web, email and phone links are made clickable, so an AI-written `javascript:` link stays plain text
-- **Clear errors:** plain-English messages for a wrong API key, rate limits, unknown models, blocked or JavaScript-only websites
-- **Multiple LLM providers:** Groq by default, Gemini as a fallback (both via the OpenAI-compatible API)
-- **Tested:** pytest tests for URL checks, the private-network block, page and link picking, logos, links, placeholders, the AI prompt and the PDF/DOCX exports, run by GitHub Actions on every push
+## How it works
 
-## 🧰 Tech Stack
+```mermaid
+flowchart LR
+    IN["Company name + website<br/>language · tone · sections · colour"] --> SAFE{"Public<br/>address?"}
+    SAFE -- "private / local" --> X["Refused with<br/>a clear message"]
+    SAFE -- yes --> SC["Scrape homepage<br/>+ About · Services · Contact<br/>(2 MB · 25 s caps)"]
+    SC --> CTX["Website facts<br/>text · emails · phones · logo"]
+    IN -- "no website" --> P
+    CTX --> P["Prompt<br/>facts only · placeholders<br/>for missing details"]
+    P --> LLM["Groq gpt-oss-120b<br/>streams Markdown"]
+    LLM -. "busy?" .-> GEM["Gemini backup"]
+    LLM --> PRE["Live preview<br/>+ Edit tab"]
+    PRE --> EXP["Exporters<br/>drop unfilled placeholders<br/>brand palette · logo"]
+    EXP --> PDF["PDF<br/>fpdf2 + HarfBuzz"]
+    EXP --> DOCX["DOCX<br/>python-docx"]
+```
 
-| Purpose        | Library                         |
-| -------------- | ------------------------------- |
-| Web UI         | Gradio                          |
-| LLM client     | OpenAI SDK → Groq / Gemini      |
-| Web scraping   | Requests + BeautifulSoup        |
-| Logo images    | Pillow                          |
-| PDF export     | fpdf2 + uharfbuzz (text shaping for Hindi and other complex scripts) |
-| Word export    | python-docx                     |
-| Config         | python-dotenv                   |
-| Tests and CI   | pytest + GitHub Actions         |
-
-## 📁 Project Structure
+## Project layout
 
 ```
 01-Brochure-Generator/
 ├── app.py                    # Gradio web app (entry point)
-├── Brochure-Generator.ipynb  # Notebook: use the package or launch the app from Jupyter
 ├── brochure/
-│   ├── config.py             # API keys, model and paths
-│   ├── scraper.py            # Website scraping + logo finder
-│   ├── generator.py          # Prompt building + LLM streaming
-│   └── exporters.py          # Markdown → PDF / DOCX, brand colours, fonts
-├── tests/                    # pytest tests (no internet or API key needed)
-├── Dockerfile                # Container for the public demo (with Hindi + CJK fonts)
+│   ├── config.py             # API keys, models, paths, hosted mode
+│   ├── scraper.py            # safe website scraping, contact details, logo finder
+│   ├── generator.py          # prompt, streaming, Groq → Gemini fallback, friendly errors
+│   └── exporters.py          # Markdown → PDF / DOCX, links, placeholders, brand colours, fonts
+├── tests/                    # 97 tests, no internet or API key needed
+├── Brochure-Generator.ipynb  # use the package or launch the app from Jupyter
+├── Dockerfile                # the Render image (with Hindi + CJK fonts)
 ├── docs/                     # README screenshots
-├── outputs/                  # Generated brochures (git-ignored)
-├── legacy/                   # Original v1 notebook
-├── requirements.txt
-├── requirements-dev.txt      # requirements.txt + pytest
-├── pytest.ini
-└── .env.example
+├── legacy/                   # the original v1 notebook from class
+└── outputs/                  # generated brochures (git-ignored)
 ```
 
-GitHub Actions workflows live at the repo root in [`.github/workflows/`](../.github/workflows):
-`brochure-tests.yml` runs the tests on every push and `keep-awake.yml` keeps the demo awake.
+## Run it locally
 
-## 🚀 Getting Started
+Needs Python 3.12 or newer.
 
 ```bash
-# 1. Install dependencies
+cd 01-Brochure-Generator
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-# 2. Add your API key
-cp .env.example .env     # then paste your GROQ_API_KEY
-
-# 3. Run
-python app.py            # opens in your browser
+cp .env.example .env          # then add GROQ_API_KEY (and optionally GOOGLE_API_KEY)
+python app.py                 # opens in your browser
 ```
 
-Options:
+Get a free Groq key at [console.groq.com/keys](https://console.groq.com/keys).
 
 ```bash
 python app.py --share        # also print a temporary public link (72 h)
@@ -98,87 +82,91 @@ python app.py --no-browser   # don't open a browser tab
 python app.py --port 7860    # fixed port
 ```
 
-> A `.env` in any parent folder also works, since the app searches upward for it.
-> Your key stays in `.env`, which git ignores. A `--share` link doesn't reveal the key,
-> but anyone with the link uses your quota, so only share it with people you trust.
+A `.env` in any parent folder also works, since the app searches upward for it. Anyone with a `--share` link uses your API quota, so only share it with people you trust.
 
-## 🧪 Tests
+## Try these
+
+Click an example in the app, then **Generate**:
+
+- **Hugging Face · friendly · yellow:** logo on the banner, real press email, `[Phone]` left for you to fill in
+- **Chai Point · in Hindi:** Devanagari text shaped correctly in the PDF
+- **Stripe · detailed, in Spanish + FAQ:** translated headings and an FAQ section
+- **Groq · short bullet points:** a one-page brochure
+- **Blue Tokai · no website:** general copy with no invented numbers, clients or dates
+
+## Edge cases handled
+
+| Situation | What happens |
+|---|---|
+| Website hides emails behind Cloudflare ("[email protected]") | The encoded address is decoded, so the real email reaches the brochure |
+| Address points to `localhost`, a home router or a private IP (also after a redirect) | Refused before any request is made |
+| Huge or slow pages | Only the first 2 MB is read; the whole site gets 25 seconds (a 48 MB page went from 69 s and 1.7 GB of RAM to under 3 s) |
+| JavaScript-only or blocked site | A warning says the brochure will be mostly generic; blocked sites get the HTTP reason |
+| Links to PDFs, images or other sites | Skipped when picking pages to read |
+| Logo that is huge, tiny, not square or a "decompression bomb" | Rejected (max 1 MB, at least 64 px, pixel cap); the banner simply has no logo |
+| Missing phone, email or address | A placeholder appears in the preview; unfilled ones are dropped from the files, and so is a heading left empty |
+| AI writes a `javascript:` or `file:` link | Stays plain text; only web, email and phone links become clickable |
+| Groq rate-limited, down or timing out | Gemini writes the brochure instead (when a Gemini key is set) and the app says so |
+| Wrong API key | Reported clearly, never hidden by the fallback |
+| Connection drops or the reply is cut off | Reported instead of exported as a finished brochure |
+| Model adds `<think>` reasoning, "Here is your brochure" or code fences | Stripped from the output |
+| Typographic spaces the font can't draw (e.g. `₹ 100` with a narrow space) | Swapped for normal spaces so nothing vanishes from the PDF |
+| `₹`, Hindi, Chinese, Japanese or Korean text | Fallback fonts load only when needed; Arabic letters join correctly |
+| Light brand colour like yellow | Text colours are darkened until they pass WCAG contrast |
+| Two brochures made in the same second | Random suffix in the file name, so nothing is overwritten |
+
+## Tests and continuous integration
 
 ```bash
 pip install -r requirements-dev.txt
 pytest
 ```
 
-The tests never touch the internet or need an API key (DNS lookups are faked), so they run
-anywhere in a few seconds. GitHub Actions runs the same command on every push.
+The 97 tests never touch the internet or need an API key (DNS lookups and the LLM client are faked), so they run anywhere in a few seconds. They cover URL checks, the private-network block, page, link and logo picking, Cloudflare email decoding, placeholders, the prompt, streaming and the Gemini fallback, and the PDF and DOCX exports. GitHub Actions runs them on every push that touches this folder ([`brochure-tests.yml`](../.github/workflows/brochure-tests.yml)).
 
-## ☁️ Deploy Your Own Copy (Render, free)
+## Deploy (Render)
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/C0derANANT/ai-engineering-projects)
+The live demo runs on Render's free plan from the [`render.yaml`](../render.yaml) Blueprint at the repo root (service `ai-brochure-generator`, Docker, built from this folder's [`Dockerfile`](Dockerfile), which also installs Hindi and CJK fonts).
 
-This gives you a free public URL where visitors don't need a key or any setup.
+- **Only tested code goes live:** Render deploys a push only after the GitHub Actions tests pass (`autoDeployTrigger: checksPass`).
+- **Keys stay out of the repo:** `GROQ_API_KEY` (and optionally `GOOGLE_API_KEY` for the fallback) are set in the Render dashboard.
+- **Free-plan limits:** the service sleeps after 15 idle minutes and takes about a minute to wake. It shares the workspace's 750 free hours a month with the other demos in this repo.
+- **Nothing private in the image:** the Docker image copies only the app's own files, never `.env` or `outputs/`.
 
-1. Fork this repo, sign in to [Render](https://render.com) with GitHub (no card needed), and
-   install [Render's GitHub App](https://github.com/apps/render) on your fork. Without the app,
-   Render never hears about your pushes, so nothing deploys after the first build.
-2. **New → Blueprint**, pick your fork. Render reads [`render.yaml`](../render.yaml) and builds the
-   [`Dockerfile`](Dockerfile).
-3. When asked for `GROQ_API_KEY`, paste your Groq key. Render keeps it on its servers:
-   it is never in the code and visitors can't see it.
+To host your own copy: fork the repo, sign in to [Render](https://render.com) with GitHub, choose **New → Blueprint**, pick your fork and paste your Groq key when asked.
 
-Every push to `main` redeploys automatically once its GitHub Actions tests pass
-(`autoDeployTrigger: checksPass` in `render.yaml`), so a commit that breaks the tests never
-goes live. To deploy by hand, use **Manual Deploy → Deploy latest commit** on the service in
-Render. Free plan notes: the site sleeps after
-15 minutes without visitors and then takes 30-60 seconds to wake. The
-[`keep-awake`](../.github/workflows/keep-awake.yml) workflow stops that by visiting it every
-10 minutes (change `DEMO_URL` in it to your own Render URL). Running all month uses about
-744 of Render's 750 free hours, so keep it to one always-on free service. On Groq's free plan
-the worst case is hitting the rate limit (the app tells visitors to wait a minute), with no bill.
-The Docker image contains only the app's own files, never `.env` or `outputs/`.
+## Configuration
 
-## ⚙️ Configuration
-
-| Variable             | Required | Default                    |
-| -------------------- | -------- | -------------------------- |
-| `GROQ_API_KEY`       | Yes*     | none                       |
-| `GROQ_MODEL`         | No       | `openai/gpt-oss-120b`      |
-| `GOOGLE_API_KEY`     | Yes*     | none (used if no Groq key) |
-| `GEMINI_MODEL`       | No       | `gemini-3.6-flash`         |
-| `ALLOW_PRIVATE_URLS` | No       | off. Set to `1` to let the scraper read `localhost` / home-network sites (blocked by default because the app can be shared publicly) |
+| Variable | Required | Default |
+|---|---|---|
+| `GROQ_API_KEY` | Yes* | none |
+| `GROQ_MODEL` | No | `openai/gpt-oss-120b` |
+| `GOOGLE_API_KEY` | Yes* | none (backup when Groq is busy, or the main provider without a Groq key) |
+| `GEMINI_MODEL` | No | `gemini-3.6-flash` |
+| `ALLOW_PRIVATE_URLS` | No | off. Set to `1` to let the scraper read `localhost` or home-network sites while testing |
 
 \* At least one of the two keys is required.
 
-**Fonts for non-English PDFs:** on macOS every listed language works out of the box.
-On Windows the app uses the built-in Nirmala UI, Microsoft YaHei, Yu Gothic and Malgun Gothic fonts.
-On Linux, install `fonts-noto-core` and `fonts-noto-cjk` (the Dockerfile already does).
-The Word file never needs extra fonts.
+**Fonts for non-English PDFs:** macOS works out of the box. Windows uses Nirmala UI, Microsoft YaHei, Yu Gothic and Malgun Gothic. On Linux, install `fonts-noto-core` and `fonts-noto-cjk` (the Dockerfile already does). The Word file never needs extra fonts.
 
-## 📝 Changelog
+## Stack
 
-**v4:** nicer files and a faster demo
-- Websites, emails and phone links are clickable in the PDF and DOCX
-- An **Edit** tab to fix the text or fill in missing details before downloading; unfilled `[Phone]`-style placeholders are kept out of the files
-- The company's logo on the PDF title banner and at the top of the Word file
-- A scheduled GitHub Action keeps the free Render demo awake, so visitors no longer wait a minute for it to start
-- pytest tests and a GitHub Actions workflow that runs them on every push
+Gradio 6 · OpenAI SDK → Groq (`gpt-oss-120b`) and Gemini · Requests + BeautifulSoup · Pillow · fpdf2 + uharfbuzz · python-docx · pytest + GitHub Actions · Docker on Render
 
-**v3:** bug fixes and new options
-- New: output language, section picker, brand colour picker, richer examples
-- Free public hosting on Render (`Dockerfile` + `render.yaml`); the public link is now opt-in with `--share`
-- Hindi, Chinese, Japanese and Korean text no longer disappears from the PDF; Arabic letters join correctly
-- Huge pages no longer freeze the app (downloads capped at 2 MB / 25 s; a 48 MB page went from 69 s and 1.7 GB of RAM to under 3 s)
-- The scraper refuses private network addresses, skips non-HTML links (PDFs, images), keeps contact details, and prefers the About page
-- A dropped connection or a cut-off reply is reported instead of being exported as a finished brochure
-- `<think>` reasoning, "Here is your brochure" intros and code fences are stripped from model output
-- No more literal `**` in PDF headings; `_italic_`, `__bold__`, escapes and `&amp;` are handled
-- Word numbered lists restart at 1; file names are unique even for same-second runs and very long company names
-- The API key is checked before scraping, and blank values in `.env` no longer override keys set in the shell
+## Changelog
 
-**v2:** refactored the notebook into a modular app:
-- Fixed PDF exports where every hyphen and bullet showed up as `?`
-- Real formatting (bold, headings, bullet lists) in both PDF and DOCX
-- Unique timestamped filenames instead of overwriting `brochure.pdf`
-- Scrapes key sub-pages, accepts URLs without `https://`, warns on unreadable sites
-- Public share link (`share=True`) printed on every run
-- Streaming preview, tone/format/length options, input validation
+**v5:** bug fixes found by testing on live websites
+- Emails hidden by Cloudflare's email protection are decoded (they used to arrive as "[email protected]" and were dropped from the files)
+- Narrow and thin spaces no longer vanish from the PDF
+- Groq → Gemini fallback when Groq is busy or down, instead of an error
+- Removed the keep-awake workflow: GitHub ran it about 3 times a day instead of every 10 minutes, so it never kept the demo awake
+
+**v4:** clickable links in the PDF and DOCX, an Edit tab with placeholder handling, the company logo on the title banner, pytest tests and GitHub Actions
+
+**v3:** output language, section picker and brand colour; Render hosting; Hindi, CJK and Arabic text in the PDF; 2 MB / 25 s scraping caps; private-network block; cleaner model output; unique file names
+
+**v2:** refactored the class notebook into a modular app with formatted PDF and DOCX exports, sub-page scraping and a streaming preview
+
+---
+
+Built by **Anant Aggarwal** · B.Tech CSE (AI)

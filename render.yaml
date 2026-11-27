@@ -1,4 +1,5 @@
-# Render Blueprint: hosts the 01-Brochure-Generator and 03-Food-Delivery-RAG demos on Render's free plan.
+# Render Blueprint: hosts the 01-Brochure-Generator, 02-AI-Movie-Chatbot and 03-Food-Delivery-RAG demos
+# on Render's free plan.
 # Render -> New -> Blueprint -> pick this repo, then paste your Groq key when asked.
 # A service added here later is created on the next Blueprint sync; set its keys in the dashboard.
 services:
@@ -18,6 +19,25 @@ services:
     envVars:
       - key: GROQ_API_KEY
         sync: false  # you type the value in Render's dashboard; it never goes in this repo
+      - key: GOOGLE_API_KEY
+        sync: false  # optional: Gemini writes the brochure when Groq is busy
+
+  - type: web
+    name: ai-movie-chatbot
+    runtime: docker
+    plan: free
+    region: singapore
+    rootDir: 02-AI-Movie-Chatbot
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    # Deploy a push only after its GitHub Actions checks pass (movie-tests.yml)
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false  # you type the value in Render's dashboard; it never goes in this repo
+      - key: GOOGLE_API_KEY
+        sync: false  # optional: Gemini answers when every Groq model is busy
 
   - type: web
     name: crave-assist

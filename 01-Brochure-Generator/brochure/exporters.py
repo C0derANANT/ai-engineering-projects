@@ -428,6 +428,9 @@ _EMOJI = re.compile(
 _LATIN1_FALLBACK = {
     "•": "-", "–": "-", "—": "-", "‑": "-", "‘": "'", "’": "'", "“": '"', "”": '"',
     "…": "...", "₹": "Rs.", "€": "EUR", "™": "(TM)", "\u00a0": " ",
+    # Typographic spaces the AI sometimes writes (e.g. "₹\u202f100", French "prix\u202f:").
+    # Arial has no glyph for some of them, so they used to vanish from the PDF.
+    "\u202f": " ", "\u2007": " ", "\u2009": " ", "\u200a": " ", "\u2060": "",
 }
 
 
