@@ -4,6 +4,8 @@
 
 Ask anything about any movie (director, cast and characters, production house, budget, box office, release date, plot, hit or flop) in **English, हिंदी or Hinglish**, typed or spoken. Instead of answering from memory, the LLM looks the film up on **Wikipedia** with tool calls, answers from those facts, and links the pages it used. Built for the Incapp AI Engineer course, starting from the class chatbot in `AI-Movie-Chatbot.ipynb`.
 
+**Live demo: [ai-movie-chatbot-j2i4.onrender.com](https://ai-movie-chatbot-j2i4.onrender.com)** (free plan: the first visit after a quiet spell takes about a minute to wake up).
+
 | What it does | How |
 |---|---|
 | Gets budgets, box office and release dates **right** | The LLM calls tools that read Wikipedia's infobox and sections, so numbers come from the article, not the model's memory |
@@ -119,7 +121,7 @@ The 73 tests fake Wikipedia (a made-up film called *Rocket Raja*), the LLM and W
 
 ## Deploy (Render)
 
-The live demo runs on Render's free plan from the [`render.yaml`](../render.yaml) Blueprint at the repo root (service `ai-movie-chatbot`, Docker, built from this folder's [`Dockerfile`](Dockerfile)).
+The [live demo](https://ai-movie-chatbot-j2i4.onrender.com) runs on Render's free plan from the [`render.yaml`](../render.yaml) Blueprint at the repo root (service `ai-movie-chatbot`, Docker, built from this folder's [`Dockerfile`](Dockerfile)).
 
 - **Only tested code goes live:** Render deploys a push only after the GitHub Actions tests pass (`autoDeployTrigger: checksPass`).
 - **Keys stay out of the repo:** `GROQ_API_KEY` (and optionally `GOOGLE_API_KEY`) are set in the Render dashboard.
